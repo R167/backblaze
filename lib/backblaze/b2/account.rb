@@ -1,6 +1,5 @@
-class Backblaze::B2
-  class Account
-    include HTTParty
+module Backblaze::B2
+  class Account < Base
 
     ##
     # Authenticates with the server to get the authorization data

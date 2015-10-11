@@ -1,4 +1,4 @@
-class Backblaze::B2
-  class File
+module Backblaze::B2
+  class File < Base
   end
 end
