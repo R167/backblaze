@@ -1,6 +1,9 @@
 module Backblaze::B2
   class Base
     include HTTParty
+    include Backblaze::Utils
+
+    format :json
 
     # @!method get(path, options={}, &block)
     # Calls the class level equivalent from HTTParty

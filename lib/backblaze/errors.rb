@@ -2,14 +2,15 @@ module Backblaze
   ##
   # Base Backblaze error class
   # @abstract
-  class Error < StandardError; end
+  class Error < StandardError
+  end
 
   ##
-  # Error class for authentication errors
-  class AuthError < Error
-
+  # Basic needs for error messages.
+  # @note this could be abstract, but just keeps things simple.
+  class RequestError < Error
     ##
-    # Creates the AuthError
+    # Creates the Error
     # @param [HTTParty::Response] response the json response
     def initialize(response)
       @response = response
@@ -23,10 +24,40 @@ module Backblaze
     end
 
     ##
+    # The Backblaze B2 error code
+    # @return [String] error code
+    def code
+      self['code']
+    end
+
+    ##
+    # The Backblaze B2 request status
+    # @return [Integer] status code
+    def status
+      self['status']
+    end
+
+    ##
+    # The Backblaze B2 error message which is a human explanation
+    # @return [String] the problem in human words
+    def message
+      self['message']
+    end
+
+
+    ##
     # Shortcut to access the response keys
     # @return [Object] the object stored at `key` in the response
     def [](key)
       @response[key]
     end
   end
+
+  ##
+  # Error class for authentication errors
+  class AuthError < RequestError; end
+
+  ##
+  # Error class for bucket errors
+  class BucketError < RequestError; end
 end

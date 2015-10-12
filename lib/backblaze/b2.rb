@@ -1,11 +1,8 @@
 require "backblaze/b2/base"
-require "backblaze/b2/account"
 require "backblaze/b2/bucket"
 require "backblaze/b2/file"
 
 module Backblaze::B2
-  SUBCLASSES = [Account, Bucket, File].freeze
-
   class << self
     attr_reader :account_id, :token, :api_url, :download_url
 
@@ -16,7 +13,7 @@ module Backblaze::B2
     # @param [#to_s] application_key the private app key
     # @raise [Backblaze::AuthError] when unable to authenticate
     # @return [void]
-    def login(account_id:, application_key:)
+    def login(account_id:, application_key:, api_path: '/b2api/v1/')
       options = {
         basic_auth: {username: account_id, password: application_key}
       }
@@ -27,8 +24,10 @@ module Backblaze::B2
       @token = response['authorizationToken']
       @api_url = response['apiUrl']
       @download_url = response['downloadUrl']
+      @api_path = api_path
 
-      Backblaze::B2::Base.base_uri @api_url
+      Backblaze::B2::Base.base_uri "#{@api_url}#{api_path}"
+      Backblaze::B2::Base.headers 'Authorization' => @token, 'Content-Type' => 'application/json'
     end
   end
 end
