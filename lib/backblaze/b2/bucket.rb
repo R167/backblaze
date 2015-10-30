@@ -61,66 +61,27 @@ module Backblaze::B2
     # @param [Boolean] cache if there is no cache, create one. If there is a cache, use it.
     #   Will check if the previous cache had the same size limit and convert options
     # @param [Boolean] convert convert the files to Backblaze::B2::File objects
-    # @param [Integer] retreived number of files used for aggresive recursion.
-    #   When `retreived >= 0`, this will be used to assure that the response did indeed return
-    #   the max number of entries. This is mainly just used for testing purposes, so you should
-    #   usually just leave it as is. It is honestly just a check that really doesn't need to
-    #   be performed. Primarily for large limits
-    # @param [String] first_file the first file name to search for
+    # @param [Integer] double_check_server whether or not to assume the server returns the most files possible
     # @return [Array<Backblaze::B2::File>] when convert is true
     # @return [Array<Hash>] when convert is false
     # @note many of these methods are for the recusion
-    def files(limit: 100, cache: false, convert: true, retreived: -1, first_file: nil)
+    def file_names(limit: 100, cache: false, convert: true, double_check_server: false)
       if cache && !@file_cache.nil?
         if limit <= @file_cache[:limit] && convert == @file_cache[:convert]
           return @file_cache[:files]
         end
       end
-      params = {'bucketId' => bucket_id}
-      if limit == -1
-        params['maxFileCount'] = 1000
-      elsif limit > 1000
-        params['maxFileCount'] = 1000
-      elsif limit > 0
-        params['maxFileCount'] = limit
-      else
-        return []
-      end
-      params['startFileName'] = first_file unless first_file.nil?
 
-      response = post('/b2_list_file_names', body: params.to_json)
+      retreive_count = (double_check_server ? 0 : -1)
+      files = file_list(limit: limit, retreived: retreive_count, first_file: nil, start_field: 'startFileName'.freeze)
 
-      files = response['files']
       files.map! do |f|
-        params = f.map {|k, v| [underscore(k).to_sym, v]}.to_h
-        if convert
-          Backblaze::B2::File.new(params)
-        else
-          params
-        end
+        Backblaze::B2::File.new(f)
+      end if convert
+      if cache
+        @file_name_cache = {limit: limit, convert: convert, files: files}
       end
-
-      original_limit = limit if cache
-
-      retreived = retreived + files.size if retreived >= 0
-      if limit > 0
-        limit = limit - (retreived >= 0 ? files.size : 1000)
-        limit = 0 if limit < 0
-      end
-
-      if (limit > 0 || limit == -1) && !response['nextFileName'].nil?
-        files.concat self.files(
-          first_file: response['nextFileName'],
-          limit: limit,
-          convert: convert,
-          retreived: retreived
-        )
-      else
-        if cache
-          @file_cache = {limit: original_limit, convert: convert, files: files}
-        end
-        files
-      end
+      files
     end
 
     class << self
@@ -145,7 +106,51 @@ module Backblaze::B2
 
         new(params)
       end
+    end
 
+    private
+
+    def file_list(limit:, retreived:, first_file:, start_field:)
+      params = {'bucketId' => bucket_id}
+      if limit == -1
+        params['maxFileCount'.freeze] = 1000
+      elsif limit > 1000
+        params['maxFileCount'.freeze] = 1000
+      elsif limit > 0
+        params['maxFileCount'.freeze] = limit
+      else
+        return []
+      end
+      unless first_file.nil?
+        params[start_field] = first_file
+      end
+
+      response = post("/b2_list_file_#{start_field == 'startFileName' ? 'names' : 'versions'}", body: params.to_json)
+
+      files = response['files']
+      files.map! do |f|
+        f.map {|k, v| [underscore(k).to_sym, v]}.to_h
+      end
+
+      retreived = retreived + files.size if retreived >= 0
+      if limit > 0
+        limit = limit - (retreived >= 0 ? files.size : 1000)
+        limit = 0 if limit < 0
+      end
+
+      next_item = response[start_field.sub('start', 'next')]
+
+      if (limit > 0 || limit == -1) && !!next_item
+        files.concat file_list(
+          first_file: next_item,
+          limit: limit,
+          convert: convert,
+          retreived: retreived,
+          start_field: start_field
+        )
+      else
+        files
+      end
     end
   end
 end

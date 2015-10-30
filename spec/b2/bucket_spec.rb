@@ -44,20 +44,20 @@ describe Backblaze::B2::Bucket do
       end
 
       it 'should process all on large limit' do
-        files = bucket.files(limit: 1000, convert: false, retreived: 0)
+        files = bucket.file_names(limit: 1000, convert: false, double_check_server: true)
         expect(files.size).to eq 40
       end
 
       it 'should process some on a small limit' do
-        files = bucket.files(limit: 20, convert: false, retreived: 0)
+        files = bucket.file_names(limit: 20, convert: false, double_check_server: true)
         expect(files.size).to eq 20
       end
 
       it 'should process use caching' do
         expect(bucket).to receive(:post).once.and_call_original
 
-        files1 = bucket.files(limit: 10, convert: false, cache: true)
-        files2 = bucket.files(limit: 10, convert: false, cache: true)
+        files1 = bucket.file_names(limit: 10, convert: false, cache: true)
+        files2 = bucket.file_names(limit: 10, convert: false, cache: true)
 
         expect(files1.size).to eq 10
         expect(files2).to eq files1
