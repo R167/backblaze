@@ -3,14 +3,13 @@ module Backblaze::B2
   ##
   # A class to represent the online buckets. Mostly used for file access
   class Bucket < Base
-
     ##
     # Creates a bucket from all of the possible parameters. This sould be rarely used and instead use a finder or creator
     # @param [#to_s] bucket_name the bucket name
     # @param [#to_s] bucket_id the bucket id
     # @param [#to_s] bucket_type the bucket publicity type
     # @param [#to_s] account_id the account to which this bucket belongs
-    def initialize(bucket_name:, bucket_id:, bucket_type:, account_id:)
+    def initialize(bucket_name:, bucket_id:, bucket_type:, account_id:, cache: false)
       @bucket_name = bucket_name
       @bucket_id = bucket_id
       @bucket_type = bucket_type
@@ -66,20 +65,42 @@ module Backblaze::B2
     # @return [Array<Hash>] when convert is false
     # @note many of these methods are for the recusion
     def file_names(limit: 100, cache: false, convert: true, double_check_server: false)
-      if cache && !@file_cache.nil?
-        if limit <= @file_cache[:limit] && convert == @file_cache[:convert]
-          return @file_cache[:files]
+      if cache && !@file_name_cache.nil?
+        if limit <= @file_name_cache[:limit] && convert == @file_name_cache[:convert]
+          return @file_name_cache[:files]
         end
       end
 
       retreive_count = (double_check_server ? 0 : -1)
-      files = file_list(limit: limit, retreived: retreive_count, first_file: nil, start_field: 'startFileName'.freeze)
+      files = file_list(bucket_id: bucket_id, limit: limit, retreived: retreive_count, first_file: nil, start_field: 'startFileName'.freeze)
 
+      merge_params = {bucket_id: bucket_id}
       files.map! do |f|
-        Backblaze::B2::File.new(f)
+        Backblaze::B2::File.new(f.merge(merge_params))
       end if convert
       if cache
         @file_name_cache = {limit: limit, convert: convert, files: files}
+      end
+      files
+    end
+
+    def file_versions(limit: 100, cache: false, convert: true, double_check_server: false)
+      if cache && !@file_versions_cache.nil?
+        if limit <= @file_versions_cache[:limit] && convert == @file_versions_cache[:convert]
+          return @file_versions_cache[:files]
+        end
+      end
+      file_versions = super(limit: 100, convert: convert, double_check_server: double_check_server, bucket_id: bucket_id)
+      files = file_versions.group_by {|version| convert ? version.file_name : version[:file_name]}
+      if convert
+        files = files.map do |name, versions|
+          File.new(file_name: name, bucket_id: bucket_id, versions: versions)
+        end
+      end
+      if cache
+        @file_versions_cache = {limit: limit, convert: convert, files: files}
+      else
+        @file_versions_cache = {}
       end
       files
     end
@@ -102,54 +123,23 @@ module Backblaze::B2
 
         raise Backblaze::BucketError.new(response) unless response.code / 100 == 2
 
-        params = %w(account_id bucket_id bucket_name bucket_type).map {|e| [e.to_sym, response[camelize(e)]]}.to_h
+        params = Hash[response.map{|k,v| [Backblaze::Utils.underscore(k).to_sym, v]}]
 
         new(params)
       end
-    end
 
-    private
-
-    def file_list(limit:, retreived:, first_file:, start_field:)
-      params = {'bucketId' => bucket_id}
-      if limit == -1
-        params['maxFileCount'.freeze] = 1000
-      elsif limit > 1000
-        params['maxFileCount'.freeze] = 1000
-      elsif limit > 0
-        params['maxFileCount'.freeze] = limit
-      else
-        return []
-      end
-      unless first_file.nil?
-        params[start_field] = first_file
-      end
-
-      response = post("/b2_list_file_#{start_field == 'startFileName' ? 'names' : 'versions'}", body: params.to_json)
-
-      files = response['files']
-      files.map! do |f|
-        f.map {|k, v| [underscore(k).to_sym, v]}.to_h
-      end
-
-      retreived = retreived + files.size if retreived >= 0
-      if limit > 0
-        limit = limit - (retreived >= 0 ? files.size : 1000)
-        limit = 0 if limit < 0
-      end
-
-      next_item = response[start_field.sub('start', 'next')]
-
-      if (limit > 0 || limit == -1) && !!next_item
-        files.concat file_list(
-          first_file: next_item,
-          limit: limit,
-          convert: convert,
-          retreived: retreived,
-          start_field: start_field
-        )
-      else
-        files
+      ##
+      # List buckets for account
+      # @return [Array<Backblaze::Bucket>] buckets for this account
+      def buckets
+        body = {
+          accountId: Backblaze::B2.account_id
+        }
+        response = post('/b2_list_buckets', body: body.to_json)
+        response['buckets'].map do |bucket|
+          params = Hash[bucket.map{|k,v| [Backblaze::Utils.underscore(k).to_sym, v]}]
+          new(params)
+        end
       end
     end
   end

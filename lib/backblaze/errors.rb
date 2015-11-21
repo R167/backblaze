@@ -54,10 +54,32 @@ module Backblaze
   end
 
   ##
+  # Errors destroying file versions
+  class DestroyErrors < Error
+    ##
+    # Creates the Error
+    # @param [Array<Backblaze::FileError>] errors errors raised destroying files
+    def initialize(errors)
+      @errors = errors
+    end
+
+    ##
+    # The Backblaze B2 error messages which broke things
+    # @return [Array<Backblaze::FileError>] errors errors raised destroying files
+    def errors
+      @errors
+    end
+  end
+
+  ##
   # Error class for authentication errors
   class AuthError < RequestError; end
 
   ##
   # Error class for bucket errors
   class BucketError < RequestError; end
+
+  ##
+  # Error class for file errors
+  class FileError < RequestError; end
 end
