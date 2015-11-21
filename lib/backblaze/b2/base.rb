@@ -83,9 +83,9 @@ module Backblaze::B2
         files.concat file_list(
           first_file: next_item,
           limit: limit,
-          convert: convert,
           retreived: retreived,
-          start_field: start_field
+          start_field: start_field,
+          bucket_id: bucket_id
         )
       else
         files
