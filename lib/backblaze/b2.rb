@@ -4,6 +4,7 @@ require "backblaze/b2/file"
 require "backblaze/b2/file_version"
 require 'net/http'
 require 'tempfile'
+require 'digest/sha1'
 
 module Backblaze::B2
   class << self

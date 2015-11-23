@@ -13,20 +13,19 @@ module Backblaze::B2
     end
 
     class << self
-      def create(data:, name: nil, base_name: '', content_type: 'b2/x-auto', bucket: nil, upload_url: nil)
+      def create(data:, bucket:, name: nil, base_name: '', content_type: 'b2/x-auto', info: {})
         raise ArgumentError.new('data must not be nil') if data.nil?
 
-        if upload_url.nil?
-          case bucket
-          when String
-            upload_url = Bucket.upload_url(bucket)
-          when Bucket
-            upload_url = bucket.upload_url
-          else
-            raise ArgumentError.new('Either provide an upload_url of bucket')
-          end
+        case bucket
+        when String
+          upload_url = Bucket.upload_url(bucket)
+        when Bucket
+          upload_url = bucket.upload_url
+        else
+          raise ArgumentError.new('You must pass a bucket')
         end
 
+        close_file = false
         case data
         when String
           data.force_encoding('ASCII-8BIT')
@@ -39,22 +38,61 @@ module Backblaze::B2
             name = ::File.basename(data)
           end
         else
+          raise ArgumentError.new('Must provide a file name with streams') if name.nil?
           if data.respond_to?(:read)
-            Tempfile
+            close_file = true
+            temp = Tempfile.new(name)
+            temp.binmode
+            IO.copy_stream(data, temp)
+            data = temp
+            data.rewind
           else
             raise ArgumentError.new('Unsuitable data type. Please read the docs.')
           end
         end
 
-        uri = URI.(upload_url)
+        uri = URI(upload_url)
         req = Net::HTTP::Post.new(uri)
 
-        req.add_field("Authorization","#{upload_authorization_token}")
-        req.add_field("X-Bz-File-Name","#{file_name}")
-        req.add_field("Content-Type","#{content_type}")
-        req.add_field("X-Bz-Content-Sha1","#{sha1}")
-        req.add_field("Content-Length",File.size(local_file))
-        req.body = File.read(local_file)
+        req.add_field("Authorization", upload_url)
+        req.add_field("X-Bz-File-Name", "#{base_name}/#{name}".tr_s('/', '/'))
+        req.add_field("Content-Type", content_type)
+        req.add_field("Content-Length", data.size)
+
+        digest = Digest::SHA1.new
+        if data.is_a? String
+          digest.update(data)
+          req.body = data
+        else
+          digest.file(data)
+          data.rewind
+          req.body_stream = data
+        end
+
+        req.add_field("X-Bz-Content-Sha1", digest)
+
+        info.first(10).map do |key, value|
+          req.add_field("X-Bz-Info-#{URI.encode(key)}", value)
+        end
+
+        http = Net::HTTP.new(req.uri.host, req.uri.port)
+        http.use_ssl = (req.uri.scheme == 'https')
+        res = http.start {|make| make.request(req)}
+
+        response = HTTParty::Response.new(req, res, lambda {HTTParty::Paser.call(res.body, 'json')})
+
+        raise Backblaze::FileError.new(response) unless response.code == 200
+
+        params = {
+          file_name: response['fileName'],
+          bucket_id: response['bucketId'],
+          size: response['contentLength'],
+          file_id: response['fileId'],
+          upload_timestamp: Time.now.to_i * 1000,
+          action: 'upload'
+        }
+
+        File.new(params)
       end
     end
 
