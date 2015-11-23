@@ -20,6 +20,10 @@ module Backblaze::B2
       @get_info
     end
 
+    def download_url
+      "#{Backblaze::B2.download_url}#{Backblaze::B2.api_path}b2_download_file_by_id?fileId=#{file_id}"
+    end
+
     def destroy!
       response = post('/b2_delete_file_version', body: {fileName: file_name, fileId: file_id}.to_json)
       raise Backblaze::FileError.new(response) unless response.code == 200

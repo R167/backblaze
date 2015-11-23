@@ -109,6 +109,14 @@ module Backblaze::B2
       @versions
     end
 
+    def download_url(bucket:)
+      "#{Backblaze::B2.download_url}/file/#{bucket.is_a?(Bucket) ? bucket.name : bucket}/#{file_name}"
+    end
+
+    def file_id_download_url
+      latest.download_url
+    end
+
     def latest
       @versions.first
     end
