@@ -12,8 +12,50 @@ module Backblaze::B2
       end
     end
 
-    def [](version)
-      versions[version]
+    class << self
+      def create(data:, name: nil, base_name: '', content_type: 'b2/x-auto', bucket: nil, upload_url: nil)
+        raise ArgumentError.new('data must not be nil') if data.nil?
+
+        if upload_url.nil?
+          case bucket
+          when String
+            upload_url = Bucket.upload_url(bucket)
+          when Bucket
+            upload_url = bucket.upload_url
+          else
+            raise ArgumentError.new('Either provide an upload_url of bucket')
+          end
+        end
+
+        case data
+        when String
+          data.force_encoding('ASCII-8BIT')
+          raise ArgumentError.new('Must provide a file name for data') if name.nil?
+        when ::File, Tempfile
+          data.binmode
+          data.rewind
+          if name.nil?
+            raise ArgumentError.new('Must provide a file name with Tempfiles') if data.is_a? Tempfile
+            name = ::File.basename(data)
+          end
+        else
+          if data.respond_to?(:read)
+            Tempfile
+          else
+            raise ArgumentError.new('Unsuitable data type. Please read the docs.')
+          end
+        end
+
+        uri = URI.(upload_url)
+        req = Net::HTTP::Post.new(uri)
+
+        req.add_field("Authorization","#{upload_authorization_token}")
+        req.add_field("X-Bz-File-Name","#{file_name}")
+        req.add_field("Content-Type","#{content_type}")
+        req.add_field("X-Bz-Content-Sha1","#{sha1}")
+        req.add_field("Content-Length",File.size(local_file))
+        req.body = File.read(local_file)
+      end
     end
 
     def file_name

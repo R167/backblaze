@@ -2,6 +2,8 @@ require "backblaze/b2/base"
 require "backblaze/b2/bucket"
 require "backblaze/b2/file"
 require "backblaze/b2/file_version"
+require 'net/http'
+require 'tempfile'
 
 module Backblaze::B2
   class << self
