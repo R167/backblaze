@@ -106,7 +106,7 @@ module Backblaze::B2
     end
 
     def upload_url
-      self.class.upload_url(bucket_id)
+      self.class.upload_url(bucket_id: bucket_id)
     end
 
     class << self
@@ -135,7 +135,7 @@ module Backblaze::B2
       def upload_url(bucket_id:)
         response = post('/b2_get_upload_url', body: {bucketId: bucket_id}.to_json)
         raise Backblaze::BucketError.new(response) unless response.code / 100 == 2
-        reponse['uploadUrl']
+        {url: response['uploadUrl'], token: response['authorizationToken']}
       end
 
       ##

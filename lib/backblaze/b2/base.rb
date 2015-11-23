@@ -40,7 +40,7 @@ module Backblaze::B2
       files.compact
     end
 
-    def file_list(limit:, retreived:, first_file:, start_field:, bucket_id:, file_name: nil)
+    def file_list(limit:, retreived:, first_file:, start_field:, bucket_id:, file_name: nil, first: true)
       params = {'bucketId'.freeze => bucket_id}
       if limit == -1
         params['maxFileCount'.freeze] = 1000
@@ -51,19 +51,29 @@ module Backblaze::B2
       else
         return []
       end
-      unless first_file.nil?
+      if first_file.nil?
+        if file_name && start_field == 'startFileId' && first
+          params['startFileName'] = file_name
+        end
+      else
         params[start_field] = first_file
       end
 
+      p params
+
       response = post("/b2_list_file_#{start_field == 'startFileName' ? 'names' : 'versions'}", body: params.to_json)
+
+      raise Backblaze::FileError.new(response) unless response.code == 200
 
       files = response['files'.freeze]
       halt = false
       files.map! do |f|
         if halt
+          p f
           nil
         else
           ret = Hash[f.map{|k,v| [Backblaze::Utils.underscore(k).to_sym, v]}]
+          p ret
           if file_name && file_name != ret[:file_name]
             halt = true
           end
@@ -85,7 +95,8 @@ module Backblaze::B2
           limit: limit,
           retreived: retreived,
           start_field: start_field,
-          bucket_id: bucket_id
+          bucket_id: bucket_id,
+          first: false
         )
       else
         files

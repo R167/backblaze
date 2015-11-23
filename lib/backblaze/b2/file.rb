@@ -18,7 +18,7 @@ module Backblaze::B2
 
         case bucket
         when String
-          upload_url = Bucket.upload_url(bucket)
+          upload_url = Bucket.upload_url(bucket_id: bucket)
         when Bucket
           upload_url = bucket.upload_url
         else
@@ -51,11 +51,11 @@ module Backblaze::B2
           end
         end
 
-        uri = URI(upload_url)
+        uri = URI(upload_url[:url])
         req = Net::HTTP::Post.new(uri)
 
-        req.add_field("Authorization", upload_url)
-        req.add_field("X-Bz-File-Name", "#{base_name}/#{name}".tr_s('/', '/'))
+        req.add_field("Authorization", upload_url[:token])
+        req.add_field("X-Bz-File-Name", "#{base_name}/#{name}".tr_s('/', '/').sub(/\A\//, ''))
         req.add_field("Content-Type", content_type)
         req.add_field("Content-Length", data.size)
 
@@ -79,9 +79,9 @@ module Backblaze::B2
         http.use_ssl = (req.uri.scheme == 'https')
         res = http.start {|make| make.request(req)}
 
-        response = HTTParty::Response.new(req, res, lambda {HTTParty::Paser.call(res.body, 'json')})
+        response = JSON.parse(res.body)
 
-        raise Backblaze::FileError.new(response) unless response.code == 200
+        raise Backblaze::FileError.new(response) unless res.code.to_i == 200
 
         params = {
           file_name: response['fileName'],
