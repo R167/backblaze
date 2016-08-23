@@ -8,7 +8,7 @@ describe Backblaze::B2 do
       end
 
       it 'should raise AuthError on failure' do
-        stub_request(:get, 'https://failed:login@api.backblaze.com/b2api/v1/b2_authorize_account').to_return(
+        stub_request(:get, 'https://failed:login@api.backblazeb2.com/b2api/v1/b2_authorize_account').to_return(
           body: "{\"code\":\"unauthorized\",\"message\":\"invalid_authorization_headers\",\"status\":401}",
           headers: {'Content-Type' => 'application/json'},
           status: 401
@@ -28,7 +28,7 @@ describe Backblaze::B2 do
       end
 
       before do
-        stub_request(:get, 'https://real:login@api.backblaze.com/b2api/v1/b2_authorize_account').to_return(
+        stub_request(:get, 'https://real:login@api.backblazeb2.com/b2api/v1/b2_authorize_account').to_return(
           body: success.to_json,
           headers: {'Content-Type' => 'application/json'},
           status: 200,

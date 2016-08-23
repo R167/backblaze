@@ -22,7 +22,7 @@ module Backblaze::B2
         basic_auth: {username: account_id, password: application_key}
       }
       api_path = "/#{api_path}/".gsub(/\/+/, '/')
-      response = HTTParty.get("https://api.backblaze.com#{api_path}b2_authorize_account", options)
+      response = HTTParty.get("https://api.backblazeb2.com#{api_path}b2_authorize_account", options)
       raise Backblaze::AuthError.new(response) unless response.code == 200
 
       @account_id = response['accountId']
