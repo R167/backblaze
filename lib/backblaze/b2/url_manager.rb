@@ -12,14 +12,23 @@ module Backblaze::B2
     end
 
     ##
+    # Same as the instance method
+    # @see #lease_url
+    def self.lease_url(bucket_id:, attempts: 1, wait: true, &block)
+      self.instance.lease_url(bucket_id: bucket_id, attempts: attempts, wait: wait, &block)
+    end
+
+    ##
     # Main method. Call with a bucket id and it will block until one of the upload
     # URLs for your bucket is available.
     # @param [String] bucket_id id of the bucket we are using
     # @param [Integer] attempts retry attempts for when errors are encountered
+    #   Setting the attempts to 2 allows us to easily handle the need to reathenticate
+    #   if this is too much though, you can easily
     # @param [Boolean] wait whether or not to block for the queue
     # @yield [Backblaze::B2::UploadUrl] yields an UploadUrl to be used in the request
     # @return [nil]
-    def lease_url(bucket_id:, attempts: 1, wait: true, &block)
+    def lease_url(bucket_id:, attempts: 2, wait: true, errors: nil, &block)
       url = nil
       @monitor.synchronize do
         bucket = get_bucket(bucket_id)
@@ -36,8 +45,8 @@ module Backblaze::B2
         end
       end
       url ||= get_bucket(bucket_id)[:queue].pop(wait)
-      retry_block(attempts: attempts) do
-        url.renew
+      retry_block(attempts: attempts, errors: errors) do |attempt|
+        attempt == 0 ? url.renew : url.renew!
         block.call(url)
       end
     ensure
@@ -45,6 +54,16 @@ module Backblaze::B2
     end
 
     def add_bucket(bucket_id:, max_uploads:)
+      to_pop = 0
+      @monitor.synchronize do
+        @buckets[bucket_id][:limit] = max_uploads
+        to_pop = @buckets[bucket_id][:current] - max_uploads
+      end
+      if to_pop > 0
+        Thread.new do
+          to_pop.times { @buckets[bucket_id][:queue].pop }
+        end
+      end
     end
 
     private
@@ -82,12 +101,16 @@ module Backblaze::B2
 
     def renew
       if url.nil? || token.nil? || expiration < Time.now
-        response = post('/b2_get_upload_url', body: {bucketId: bucket_id}.to_json)
-        raise Backblaze::BucketError.new(response) unless response.code / 100 == 2
-        @url = response['uploadUrl']
-        @token = response['authorizationToken']
-        @expiration = Time.now + ONE_DAY
+        renew!
       end
+    end
+
+    def renew!
+      response = post('/b2_get_upload_url', body: {bucketId: bucket_id}.to_json)
+      raise Backblaze::BucketError.new(response) unless response.code / 100 == 2
+      @url = response['uploadUrl']
+      @token = response['authorizationToken']
+      @expiration = Time.now + ONE_DAY
     end
   end
 end

@@ -22,14 +22,21 @@ module Backblaze::Utils
     end
   end
 
-  def retry_block(attempts: 1, errors: [StandardError], raise_last: true, &block)
-    attempts -= 1
-    block.call(count)
-  rescue *errors => e
-    if attempts > 0
-      retry
-    elsif raise_last
-      raise e
+  def retry_block(attempts: 1, errors: nil, raise_last: true, &block)
+    errors ||= [StandardError]
+    attempt_count = 0
+    begin
+      attempts -= 1
+      block.call(attempt_count)
+    rescue *errors
+      attempt_count += 1
+      if attempts > 0
+        retry
+      elsif raise_last
+        raise
+      else
+        nil
+      end
     end
   end
 

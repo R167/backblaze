@@ -90,7 +90,7 @@ module Backblaze::B2
           return @file_versions_cache[:files]
         end
       end
-      file_versions = super(limit: 100, convert: convert, double_check_server: double_check_server, bucket_id: bucket_id)
+      file_versions = super(limit: limit, convert: convert, double_check_server: double_check_server, bucket_id: bucket_id)
       files = file_versions.group_by {|version| convert ? version.file_name : version[:file_name]}
       if convert
         files = files.map do |name, versions|

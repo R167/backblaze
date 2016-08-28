@@ -92,16 +92,7 @@ module Backblaze::B2
 
         raise Backblaze::FileError.new(response) unless res.code.to_i == 200
 
-        params = {
-          file_name: response['fileName'],
-          bucket_id: response['bucketId'],
-          size: response['contentLength'],
-          file_id: response['fileId'],
-          upload_timestamp: Time.now.to_i * 1000,
-          action: 'upload'
-        }
-
-        FileObject.new(params)
+        FileObject.new(Hash[response.map{|k,v| [Backblaze::Utils.underscore(k).to_sym, v]}])
       end
     end
 

@@ -62,6 +62,7 @@ module Backblaze::B2
       if [:application_key, :account_id].inject(true) { |status, key| status && !parsed[key].nil? }
         puts "Attempting #{parsed[:account_id]}" if logging
         login(parsed)
+        puts "Login successful" if logging
         true
       else
         puts "Missing params" if logging
