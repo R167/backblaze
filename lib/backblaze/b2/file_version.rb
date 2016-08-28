@@ -10,6 +10,10 @@ module Backblaze::B2
       @upload_timestamp = Time.at(upload_timestamp / 1000.0)
     end
 
+    ##
+    # Gets the info for the particular file version
+    # @return [Hash] the file info
+    # @see https://www.backblaze.com/b2/docs/b2_get_file_info.html Backblaze B2 b2_get_file_info request
     def get_info
       unless defined?(@get_info)
         response = post('/b2_get_file_info', body: {fileId: file_id}.to_json)

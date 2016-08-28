@@ -59,9 +59,9 @@ module Backblaze::B2
     #   so it will try to grab at least `limit` files, unless there aren't enoungh in the bucket
     # @param [Boolean] cache if there is no cache, create one. If there is a cache, use it.
     #   Will check if the previous cache had the same size limit and convert options
-    # @param [Boolean] convert convert the files to Backblaze::B2::File objects
+    # @param [Boolean] convert convert the files to Backblaze::B2::FileObject objects
     # @param [Integer] double_check_server whether or not to assume the server returns the most files possible
-    # @return [Array<Backblaze::B2::File>] when convert is true
+    # @return [Array<Backblaze::B2::FileObject>] when convert is true
     # @return [Array<Hash>] when convert is false
     # @note many of these methods are for the recusion
     def file_names(limit: 100, cache: false, convert: true, double_check_server: false)
@@ -76,7 +76,7 @@ module Backblaze::B2
 
       merge_params = {bucket_id: bucket_id}
       files.map! do |f|
-        Backblaze::B2::File.new(f.merge(merge_params))
+        Backblaze::B2::FileObject.new(f.merge(merge_params))
       end if convert
       if cache
         @file_name_cache = {limit: limit, convert: convert, files: files}
@@ -94,7 +94,7 @@ module Backblaze::B2
       files = file_versions.group_by {|version| convert ? version.file_name : version[:file_name]}
       if convert
         files = files.map do |name, versions|
-          File.new(file_name: name, bucket_id: bucket_id, versions: versions)
+          FileObject.new(file_name: name, bucket_id: bucket_id, versions: versions)
         end
       end
       if cache

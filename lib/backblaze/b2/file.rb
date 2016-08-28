@@ -1,5 +1,5 @@
 module Backblaze::B2
-  class File < Base
+  class FileObject < Base
     def initialize(file_name:, bucket_id:, versions: nil, **file_version_args)
       @file_name = file_name
       @bucket_id = bucket_id
@@ -30,12 +30,12 @@ module Backblaze::B2
         when String
           data.force_encoding('ASCII-8BIT')
           raise ArgumentError.new('Must provide a file name for data') if name.nil?
-        when ::File, Tempfile
+        when File, Tempfile
           data.binmode
           data.rewind
           if name.nil?
             raise ArgumentError.new('Must provide a file name with Tempfiles') if data.is_a? Tempfile
-            name = ::File.basename(data)
+            name = File.basename(data)
           end
         else
           raise ArgumentError.new('Must provide a file name with streams') if name.nil?
@@ -72,7 +72,7 @@ module Backblaze::B2
         req.add_field("X-Bz-Content-Sha1", digest)
 
         info.first(10).map do |key, value|
-          req.add_field("X-Bz-Info-#{URI.encode(key)}", value)
+          req.add_field("X-Bz-Info-#{URI.encode(key.to_s)}", value)
         end
 
         http = Net::HTTP.new(req.uri.host, req.uri.port)
@@ -92,7 +92,7 @@ module Backblaze::B2
           action: 'upload'
         }
 
-        File.new(params)
+        FileObject.new(params)
       end
     end
 
