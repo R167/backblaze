@@ -59,8 +59,6 @@ module Backblaze::B2
         params[start_field] = first_file
       end
 
-      p params
-
       response = post("/b2_list_file_#{start_field == 'startFileName' ? 'names' : 'versions'}", body: params.to_json)
 
       raise Backblaze::FileError.new(response) unless response.code == 200
@@ -69,11 +67,9 @@ module Backblaze::B2
       halt = false
       files.map! do |f|
         if halt
-          p f
           nil
         else
           ret = Hash[f.map{|k,v| [Backblaze::Utils.underscore(k).to_sym, v]}]
-          p ret
           if file_name && file_name != ret[:file_name]
             halt = true
           end
