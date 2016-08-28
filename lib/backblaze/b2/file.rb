@@ -13,6 +13,15 @@ module Backblaze::B2
     end
 
     class << self
+      ##
+      # Upload a file
+      # @param [String, File, Tempfile, #read] data data to be uploaded
+      #   the data is assumed to be in one of the above formats. A Tempfile, File,
+      #   or Object that responds to read is preferred as it can then be uploaded
+      #   as a stream rather than as binary data handled by ruby. Any String passed
+      #   will be interpretted as ASCII-8BIT and then sent as the body of the request.
+      # @param [Backblaze::B2::Bucket, String] bucket the bucket to upload this file to
+      # @raise [Backblaze::BucketError] unable to create the specified bucket
       def create(data:, bucket:, name: nil, base_name: '', content_type: 'b2/x-auto', info: {})
         raise ArgumentError.new('data must not be nil') if data.nil?
 

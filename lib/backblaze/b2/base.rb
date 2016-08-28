@@ -10,13 +10,13 @@ module Backblaze::B2
     # @see http://www.rubydoc.info/github/jnunemaker/httparty/HTTParty/ClassMethods HTTParty::ClassMethods
 
     # @!method head(path, options={}, &block)
-    # (see #get)
+    # @see #get
 
     # @!method post(path, options={}, &block)
-    # (see #get)
+    # @see #get
 
     # @!method put(path, options={}, &block)
-    # (see #get)
+    # @see #get
 
     [:get, :head, :post, :put].each do |req|
       define_method(req) do |path, options={}, &block|
