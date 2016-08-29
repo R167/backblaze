@@ -31,7 +31,7 @@ module Backblaze::B2
     def lease_url(bucket_id:, attempts: 2, wait: true, errors: nil, &block)
       url = nil
       @monitor.synchronize do
-        bucket = get_bucket(bucket_id)
+        bucket = read_bucket(bucket_id)
         while bucket[:queue].length > 0 && url.nil? && wait
           url = bucket[:queue].pop
           if url.expired?
@@ -39,12 +39,12 @@ module Backblaze::B2
             url = nil
           end
         end
-        if bucket[:current] < bucket[:limit]
+        if bucket[:current] < bucket[:limit] && url.nil?
           url = UploadUrl.new(bucket_id: bucket_id)
           @buckets[bucket_id][:current] += 1
         end
       end
-      url ||= get_bucket(bucket_id)[:queue].pop(wait)
+      url ||= read_bucket(bucket_id)[:queue].pop(!wait)
       retry_block(attempts: attempts, errors: errors) do |attempt|
         attempt == 0 ? url.renew : url.renew!
         block.call(url)
@@ -53,7 +53,7 @@ module Backblaze::B2
       @buckets[bucket_id][:queue] << url if url
     end
 
-    def add_bucket(bucket_id:, max_uploads:)
+    def set_bucket(bucket_id:, max_uploads:)
       to_pop = 0
       @monitor.synchronize do
         @buckets[bucket_id][:limit] = max_uploads

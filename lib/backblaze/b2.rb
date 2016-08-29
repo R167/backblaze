@@ -1,5 +1,6 @@
 require 'monitor'
 require "backblaze/b2/base"
+require "backblaze/b2/url_manager"
 require "backblaze/b2/bucket"
 require "backblaze/b2/file"
 require "backblaze/b2/file_version"

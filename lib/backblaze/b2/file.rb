@@ -8,7 +8,7 @@ module Backblaze::B2
         @versions = versions
       else
         @fetched_all = false
-        @versions = [FileVersion.new(file_version_args.merge(file_name: file_name))]
+        @versions = [FileVersion.new(file_version_args.merge(file_name: file_name, bucket_id: bucket_id))]
       end
     end
 

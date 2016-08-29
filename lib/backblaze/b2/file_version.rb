@@ -1,9 +1,10 @@
 module Backblaze::B2
   class FileVersion < Base
-    attr_reader :file_id, :content_length, :action, :upload_timestamp, :file_name
+    attr_reader :file_id, :content_length, :action, :upload_timestamp, :file_name, :bucket_id
 
-    def initialize(file_id:, content_length:, upload_timestamp:, action:, file_name:, **options)
+    def initialize(file_id:, content_length:, upload_timestamp:, action:, file_name:, bucket_id:, **options)
       @file_id = file_id
+      @bucket_id = bucket_id
       @content_length = content_length
       @action = action
       @file_name = file_name
