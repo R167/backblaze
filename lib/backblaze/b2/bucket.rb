@@ -22,6 +22,8 @@ module Backblaze::B2
       @bucket_name
     end
 
+    alias_method :name, :bucket_name
+
     # @return [String] bucket id
     def bucket_id
       @bucket_id
