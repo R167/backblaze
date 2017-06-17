@@ -9,7 +9,8 @@ module Backblaze::B2
     # @param [#to_s] bucket_id the bucket id
     # @param [#to_s] bucket_type the bucket publicity type
     # @param [#to_s] account_id the account to which this bucket belongs
-    def initialize(bucket_name:, bucket_id:, bucket_type:, account_id:, cache: false)
+    def initialize(bucket_name:, bucket_id:, bucket_type:, account_id:, cache: false,
+                   bucket_info: {}, lifecycle_rules: [], revision: nil)
       @bucket_name = bucket_name
       @bucket_id = bucket_id
       @bucket_type = bucket_type

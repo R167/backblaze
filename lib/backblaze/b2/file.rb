@@ -89,6 +89,9 @@ module Backblaze::B2
           size: response['contentLength'],
           file_id: response['fileId'],
           upload_timestamp: Time.now.to_i * 1000,
+          content_length: data.size,
+          content_type: content_type,
+          content_sha1: digest,
           action: 'upload'
         }
 
