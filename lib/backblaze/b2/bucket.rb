@@ -152,6 +152,10 @@ module Backblaze::B2
           new(params)
         end
       end
+
+      def get_bucket(name:)
+        buckets.find { |b| b.bucket_name == name }
+      end
     end
   end
 end
