@@ -16,7 +16,7 @@ Backblaze B2 Cloud Storage is similar to Amazon's AWS S3 Storage, but it has a f
 Add this line to your application's Gemfile:
 
 ```ruby
-gem 'paperclip-backblaze'
+gem 'paperclip-backblaze', github: 'alextsui05/paperclip-backblaze'
 ```
 And then execute:
 
