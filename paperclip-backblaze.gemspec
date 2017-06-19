@@ -1,17 +1,17 @@
 # coding: utf-8
 lib = File.expand_path('../lib', __FILE__)
 $LOAD_PATH.unshift(lib) unless $LOAD_PATH.include?(lib)
-require 'backblaze/version'
+require 'paperclip/backblaze/version'
 
 Gem::Specification.new do |spec|
-  spec.name          = "backblaze"
-  spec.version       = Backblaze::VERSION
-  spec.authors       = ["Winston Durand"]
-  spec.email         = ["me@winstondurand.com"]
+  spec.name          = "paperclip-backblaze"
+  spec.version       = Paperclip::Backblaze::VERSION
+  spec.authors       = ["Alex Tsui", "Winston Durand"]
+  spec.email         = ["alextsui05@gmail.com"]
 
-  spec.summary       = %q{Interface for teh Backblaze B2 Cloud}
-  spec.description   = %q{Intended to offer a way to interact with Backblaze B2 Cloud Storage without touching the API directly.}
-  spec.homepage      = "https://github.com/R167/backblaze"
+  spec.summary       = %q{Paperclip storage adapter for Backblaze B2 Cloud.}
+  spec.description   = %q{Allows Paperclip attachments to be backed by Backblaze B2 Cloud storage as an alternative to AWS S3.}
+  spec.homepage      = "https://github.com/alextsui05/paperclip-backblaze"
   spec.license       = "MIT"
 
   spec.files         = `git ls-files -z`.split("\x0").reject { |f| f.match(%r{^(test|spec|features)/}) }

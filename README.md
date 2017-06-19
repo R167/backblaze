@@ -1,37 +1,74 @@
-# Backblaze
+# paperclip-backblaze
 
-The Backblaze ruby gem is an implementation of the [Backblaze B2 Cloud Storage API](https://www.backblaze.com/b2/docs/). In addition to simplifying calls, it also implements an object oriented structure for dealing with files. Calling the api through different objects will not cause each to get updated. Always assume that data retrieved is just a snapshot from when the object was retrieved.
+The `paperclip-backblaze` provides a [Paperclip](https://github.com/thoughtbot/paperclip) storage adapter so that
+attachments can be saved to [Backblaze B2 Cloud Storage API](https://www.backblaze.com/b2/docs/).
+It makes use of Winston Durand's [backblaze](https://github.com/R167/backblaze) gem
+to access the B2 API behind the scenes.
+
+Backblaze B2 Cloud Storage is similar to Amazon's AWS S3 Storage, but it has a few selling points:
+
+1. They run their own hardware (that's open-sourced, including the schematics, and drive reports)
+2. It's $0.005/GB/month vs S3's $0.030/GB/month
+3. You actually get a free GB of bandwidth a day, so it might be nice for personal projects.
 
 ## Installation
 
 Add this line to your application's Gemfile:
 
 ```ruby
-gem 'backblaze'
+gem 'paperclip-backblaze'
 ```
-
 And then execute:
 
     $ bundle
 
-Or install it yourself as:
-
-    $ gem install backblaze
-
 ## Usage
 
-TODO: Write usage instructions here
+You should be familiar with configuring Paperclip attachments for your model.
+If not, please start with the Paperclip documentation
+[here](https://github.com/thoughtbot/paperclip#usage).
 
-## Development
+Configuring Backblaze storage is very similar to [configuring S3 storage](http://www.rubydoc.info/gems/paperclip/Paperclip/Storage/S3).
+Let's suppose we have a `Note` model with an `image` attachment that we would
+like to be backed by Backblaze storage. In the model, it might be configured
+like this:
 
-After checking out the repo, run `bin/setup` to install dependencies. Then, run `rake rspec` to run the tests. You can also run `bin/console` for an interactive prompt that will allow you to experiment.
+```.rb
+# app/models/note.rb
+class Note < ApplicationRecord
+  has_attached_file :image,
+    storage: :backblaze,
+    b2_credentials: Rails.root.join('config/b2.yml'),
+    b2_bucket: 'bucket_for_my_app'
+  ...
+```
 
-To install this gem onto your local machine, run `bundle exec rake install`. To release a new version, update the version number in `version.rb`, and then run `bundle exec rake release`, which will create a git tag for the version, push git commits and tags, and push the `.gem` file to [rubygems.org](https://rubygems.org).
+```.yml
+# config/b2.yml
+account_id: 123456789abc
+application_key: 0123456789abcdef0123456789abcdef0123456789
+```
+
+Currently, these are required options:
+
+- `:storage` - This should be set to :backblaze in order to use this
+   storage adapter.
+
+- `:b2_credentials` - This should point to a YAML file containing your B2
+   account ID and application key. The contents should look something
+   like `b2.yml` above.
+
+- `:b2_bucket` - This should name the bucket to save files to.
 
 ## Contributing
 
-Bug reports and pull requests are welcome on GitHub at https://github.com/[USERNAME]/backblaze. This project is intended to be a safe, welcoming space for collaboration, and contributors are expected to adhere to the [Contributor Covenant](contributor-covenant.org) code of conduct.
+This started as a proof of concept for a hobby project, so there's lots of room
+for improvement, and it would be great to have your help.
 
+Bug reports and pull requests are welcome on GitHub at
+https://github.com/alextsui05/paperclip-backblaze. This project is intended to be a safe,
+welcoming space for collaboration, and contributors are expected to adhere to
+the [Contributor Covenant](contributor-covenant.org) code of conduct.
 
 ## License
 
