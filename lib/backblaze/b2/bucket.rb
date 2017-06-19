@@ -57,6 +57,7 @@ module Backblaze::B2
 
     ##
     # Lists all files that are in the bucket. This is the basic building block for the search.
+    # @param [String] first_file first file in the bucket to start listing from
     # @param [Integer] limit max number of files to retreive. Set to `-1` to get all files.
     #   This is not exact as it mainly just throws the limit into max param on the request
     #   so it will try to grab at least `limit` files, unless there aren't enoungh in the bucket
@@ -67,7 +68,7 @@ module Backblaze::B2
     # @return [Array<Backblaze::B2::File>] when convert is true
     # @return [Array<Hash>] when convert is false
     # @note many of these methods are for the recusion
-    def file_names(limit: 100, cache: false, convert: true, double_check_server: false)
+    def file_names(first_file: nil, limit: 100, cache: false, convert: true, double_check_server: false)
       if cache && !@file_name_cache.nil?
         if limit <= @file_name_cache[:limit] && convert == @file_name_cache[:convert]
           return @file_name_cache[:files]
@@ -75,7 +76,7 @@ module Backblaze::B2
       end
 
       retreive_count = (double_check_server ? 0 : -1)
-      files = file_list(bucket_id: bucket_id, limit: limit, retreived: retreive_count, first_file: nil, start_field: 'startFileName'.freeze)
+      files = file_list(bucket_id: bucket_id, limit: limit, retreived: retreive_count, first_file: first_file, start_field: 'startFileName'.freeze)
 
       merge_params = {bucket_id: bucket_id}
       files.map! do |f|
