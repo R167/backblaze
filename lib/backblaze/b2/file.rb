@@ -30,7 +30,7 @@ module Backblaze::B2
         when String
           data.force_encoding('ASCII-8BIT')
           raise ArgumentError.new('Must provide a file name for data') if name.nil?
-        when ::File, Tempfile
+        when ::File, Tempfile, ::Paperclip::UploadedFileAdapter
           data.binmode
           data.rewind
           if name.nil?
@@ -63,6 +63,10 @@ module Backblaze::B2
         if data.is_a? String
           digest.update(data)
           req.body = data
+        elsif data.is_a? ::Paperclip::UploadedFileAdapter
+          digest.file(data.path)
+          data.rewind
+          req.body_stream = data
         else
           digest.file(data)
           data.rewind
