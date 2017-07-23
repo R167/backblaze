@@ -12,13 +12,12 @@ module Paperclip
     #     storage adapter.
     #
     #   :b2_credentials - This should point to a YAML file containing your B2
-    #     account ID and application key. The contents should look something
-    #     like:
+    #     account ID, application key, and bucket. The contents should look
+    #     something like:
     #
     #     account_id: 123456789abc
     #     application_key: 0123456789abcdef0123456789abcdef0123456789
-    #
-    #   :b2_bucket - This should name the bucket to save files to.
+    #     bucket: my_b2_bucket_name
     #
     # So for example, a model might be configured something like this:
     #
@@ -26,8 +25,18 @@ module Paperclip
     #     has_attached_file :image,
     #       storage: :backblaze,
     #       b2_credentials: Rails.root.join('config/b2.yml'),
-    #       b2_bucket: 'bucket_for_my_app'
     #     ...
+    #
+    # You can put the backblaze config in the environment config file e.g.:
+    #
+    #   # config/environments/production.rb
+    #
+    #   config.paperclip_defaults = {
+    #     storage: :backblaze,
+    #     b2_credentials: Rails.root.join('config/b2.yml')
+    #   }
+    #
+    # If you do it this way, then you don't need to put it in the model.
     #
     module Backblaze
       def self.extended base
@@ -76,7 +85,7 @@ module Paperclip
       # Return the Backblaze::B2::Bucket object representing the bucket
       # specified by the required options[:b2_bucket].
       def b2_bucket
-        @b2_bucket ||= ::Backblaze::B2::Bucket.get_bucket(name: @options[:b2_bucket])
+        @b2_bucket ||= ::Backblaze::B2::Bucket.get_bucket(name: b2_credentials[:bucket])
       end
 
       # Return the specified bucket name as a String.

@@ -30,23 +30,38 @@ If not, please start with the Paperclip documentation
 
 Configuring Backblaze storage is very similar to [configuring S3 storage](http://www.rubydoc.info/gems/paperclip/Paperclip/Storage/S3).
 Let's suppose we have a `Note` model with an `image` attachment that we would
-like to be backed by Backblaze storage. In the model, it might be configured
-like this:
+like to be backed by Backblaze storage.
 
-```.rb
-# app/models/note.rb
-class Note < ApplicationRecord
-  has_attached_file :image,
-    storage: :backblaze,
-    b2_credentials: Rails.root.join('config/b2.yml'),
-    b2_bucket: 'bucket_for_my_app'
-  ...
-```
+
+
+First, put your credentials and bucket name in a YML file.
 
 ```.yml
 # config/b2.yml
 account_id: 123456789abc
 application_key: 0123456789abcdef0123456789abcdef0123456789
+bucket: my_b2_bucket_name
+```
+
+Then let Paperclip know about it. You can put it in your environment config:
+
+```.rb
+# config/environments/production.rb
+
+...
+config.paperclip_defaults = {
+  storage: :backblaze,
+  b2_credentials: Rails.root.join('config/b2.yml')
+}
+```
+
+Now just specify the attachment in the model, and it will use your backblaze configuration:
+
+```.rb
+# app/models/note.rb
+class Note < ApplicationRecord
+  has_attached_file :image
+  ...
 ```
 
 Currently, these are required options:
@@ -57,8 +72,6 @@ Currently, these are required options:
 - `:b2_credentials` - This should point to a YAML file containing your B2
    account ID and application key. The contents should look something
    like `b2.yml` above.
-
-- `:b2_bucket` - This should name the bucket to save files to.
 
 ## Contributing
 
@@ -73,3 +86,16 @@ the [Contributor Covenant](contributor-covenant.org) code of conduct.
 ## License
 
 The gem is available as open source under the terms of the [MIT License](http://opensource.org/licenses/MIT).
+
+## Version Log
+
+### 0.2.0
+
+- Remove `:b2_bucket` option. It should now be specified in the credentials file with a `bucket` key.
+- Update example that doesn't pollute model with paperclip configuration
+
+### 0.1.0
+
+First release
+
+
