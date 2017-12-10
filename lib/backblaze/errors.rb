@@ -19,9 +19,7 @@ module Backblaze
     ##
     # The response from the server
     # @return [HTTParty::Response] the response
-    def response
-      @response
-    end
+    attr_reader :response
 
     ##
     # The Backblaze B2 error code
@@ -44,7 +42,6 @@ module Backblaze
       self['message']
     end
 
-
     ##
     # Shortcut to access the response keys
     # @return [Object] the object stored at `key` in the response
@@ -66,9 +63,7 @@ module Backblaze
     ##
     # The Backblaze B2 error messages which broke things
     # @return [Array<Backblaze::FileError>] errors errors raised destroying files
-    def errors
-      @errors
-    end
+    attr_reader :errors
   end
 
   ##

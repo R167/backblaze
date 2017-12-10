@@ -1,5 +1,4 @@
 module Backblaze::B2
-
   ##
   # A class to represent the online buckets. Mostly used for file access
   class Bucket < Base
@@ -9,25 +8,20 @@ module Backblaze::B2
     # @param [#to_s] bucket_id the bucket id
     # @param [#to_s] bucket_type the bucket publicity type
     # @param [#to_s] account_id the account to which this bucket belongs
-    def initialize(bucket_name:, bucket_id:, bucket_type:, account_id:, cache: false,
-                   bucket_info: {}, lifecycle_rules: [], revision: nil)
-      @bucket_name = bucket_name
-      @bucket_id = bucket_id
-      @bucket_type = bucket_type
-      @account_id = account_id
+    def initialize(options)
+      @bucket_name = options.fetch(:bucket_name)
+      @bucket_id = options.fetch(:bucket_id)
+      @bucket_type = options.fetch(:bucket_type)
+      @account_id = options.fetch(:account_id)
     end
 
     # @return [String] bucket name
-    def bucket_name
-      @bucket_name
-    end
+    attr_reader :bucket_name
 
-    alias_method :name, :bucket_name
+    alias name bucket_name
 
     # @return [String] bucket id
-    def bucket_id
-      @bucket_id
-    end
+    attr_reader :bucket_id
 
     # @return [Boolean] is the bucket public
     def public?
@@ -40,14 +34,10 @@ module Backblaze::B2
     end
 
     # @return [String] account id
-    def account_id
-      @account_id
-    end
+    attr_reader :account_id
 
     # @return [String] bucket type
-    def bucket_type
-      @bucket_type
-    end
+    attr_reader :bucket_type
 
     # Check if eqivalent. Takes advantage of globally unique names
     # @return [Boolean] equality
@@ -78,12 +68,14 @@ module Backblaze::B2
       retreive_count = (double_check_server ? 0 : -1)
       files = file_list(bucket_id: bucket_id, limit: limit, retreived: retreive_count, first_file: first_file, start_field: 'startFileName'.freeze)
 
-      merge_params = {bucket_id: bucket_id}
-      files.map! do |f|
-        Backblaze::B2::File.new(f.merge(merge_params))
-      end if convert
+      merge_params = { bucket_id: bucket_id }
+      if convert
+        files.map! do |f|
+          Backblaze::B2::File.new(f.merge(merge_params))
+        end
+      end
       if cache
-        @file_name_cache = {limit: limit, convert: convert, files: files}
+        @file_name_cache = { limit: limit, convert: convert, files: files }
       end
       files
     end
@@ -95,17 +87,17 @@ module Backblaze::B2
         end
       end
       file_versions = super(limit: 100, convert: convert, double_check_server: double_check_server, bucket_id: bucket_id)
-      files = file_versions.group_by {|version| convert ? version.file_name : version[:file_name]}
+      files = file_versions.group_by { |version| convert ? version.file_name : version[:file_name] }
       if convert
         files = files.map do |name, versions|
           File.new(file_name: name, bucket_id: bucket_id, versions: versions)
         end
       end
-      if cache
-        @file_versions_cache = {limit: limit, convert: convert, files: files}
-      else
-        @file_versions_cache = {}
-      end
+      @file_versions_cache = if cache
+                               { limit: limit, convert: convert, files: files }
+                             else
+                               {}
+                             end
       files
     end
 
@@ -129,17 +121,17 @@ module Backblaze::B2
         }
         response = post('/b2_create_bucket', body: body.to_json)
 
-        raise Backblaze::BucketError.new(response) unless response.code / 100 == 2
+        raise Backblaze::BucketError, response unless response.code / 100 == 2
 
-        params = Hash[response.map{|k,v| [Backblaze::Utils.underscore(k).to_sym, v]}]
+        params = Hash[response.map { |k, v| [Backblaze::Utils.underscore(k).to_sym, v] }]
 
         new(params)
       end
 
       def upload_url(bucket_id:)
-        response = post('/b2_get_upload_url', body: {bucketId: bucket_id}.to_json)
-        raise Backblaze::BucketError.new(response) unless response.code / 100 == 2
-        {url: response['uploadUrl'], token: response['authorizationToken']}
+        response = post('/b2_get_upload_url', body: { bucketId: bucket_id }.to_json)
+        raise Backblaze::BucketError, response unless response.code / 100 == 2
+        { url: response['uploadUrl'], token: response['authorizationToken'] }
       end
 
       ##
@@ -151,7 +143,7 @@ module Backblaze::B2
         }
         response = post('/b2_list_buckets', body: body.to_json)
         response['buckets'].map do |bucket|
-          params = Hash[bucket.map{|k,v| [Backblaze::Utils.underscore(k).to_sym, v]}]
+          params = Hash[bucket.map { |k, v| [Backblaze::Utils.underscore(k).to_sym, v] }]
           new(params)
         end
       end

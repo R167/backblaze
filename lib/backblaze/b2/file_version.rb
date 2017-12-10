@@ -18,10 +18,10 @@ module Backblaze::B2
 
     def get_info
       unless defined?(@get_info)
-        response = post('/b2_get_file_info', body: {fileId: file_id}.to_json)
-        raise Backblaze::FileError.new(response) unless response.code == 200
+        response = post('/b2_get_file_info', body: { fileId: file_id }.to_json)
+        raise Backblaze::FileError, response unless response.code == 200
 
-        @get_info = Hash[response.map{|k,v| [Backblaze::Utils.underscore(k).to_sym, v]}]
+        @get_info = Hash[response.map { |k, v| [Backblaze::Utils.underscore(k).to_sym, v] }]
       end
       @get_info
     end
@@ -31,8 +31,8 @@ module Backblaze::B2
     end
 
     def destroy!
-      response = post('/b2_delete_file_version', body: {fileName: file_name, fileId: file_id}.to_json)
-      raise Backblaze::FileError.new(response) unless response.code == 200
+      response = post('/b2_delete_file_version', body: { fileName: file_name, fileId: file_id }.to_json)
+      raise Backblaze::FileError, response unless response.code == 200
       @destroyed = true
     end
 
