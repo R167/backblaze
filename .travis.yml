@@ -1,4 +1,13 @@
 language: ruby
+sudo: false
 rvm:
   - 2.2.2
-before_install: gem install bundler -v 1.10.5
+  - 2.4.2
+before_install:
+  - rvm @global do gem install bundler -v 1.12.5
+
+gemfile:
+  - Gemfile
+
+script:
+  bundle exec rake

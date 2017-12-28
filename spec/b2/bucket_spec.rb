@@ -5,16 +5,16 @@ describe Backblaze::B2::Bucket do
     context 'success' do
       let(:success) do
         {
-          "bucketId" => "4a48fe8875c6214145260818",
-          "accountId" => "010203040506",
-          "bucketName" => "some_bucket",
-          "bucketType" => "allPublic"
+          'bucketId' => '4a48fe8875c6214145260818',
+          'accountId' => '010203040506',
+          'bucketName' => 'some_bucket',
+          'bucketType' => 'allPublic'
         }
       end
 
       it 'should create a bucket' do
         stub_request(:post, /.*\/b2_create_bucket.*/).to_return(
-          headers: {'Content-Type' => 'application/json'},
+          headers: { 'Content-Type' => 'application/json' },
           body: success.to_json,
           status: 201
         )
@@ -29,7 +29,7 @@ describe Backblaze::B2::Bucket do
   end
 
   describe '.files' do
-    let(:bucket){Backblaze::B2::Bucket.new(bucket_type: 'allPublic', bucket_name: 'generic_bucket', bucket_id: 'fhdjsfhdkja', account_id: 'fhdjkafd')}
+    let(:bucket) { Backblaze::B2::Bucket.new(bucket_type: 'allPublic', bucket_name: 'generic_bucket', bucket_id: 'fhdjsfhdkja', account_id: 'fhdjkafd') }
 
     context 'success' do
       before do
@@ -38,7 +38,7 @@ describe Backblaze::B2::Bucket do
         4.times do
           files = file_list(size: 10, next_item: next_item)
           next_item = files['files'][9]['fileName']
-          list.insert(0, {body: files.to_json, status: 200})
+          list.insert(0, body: files.to_json, status: 200)
         end
         stub_request(:post, /.*\/b2_list_file_names.*/).to_return(*list)
       end
@@ -62,7 +62,6 @@ describe Backblaze::B2::Bucket do
         expect(files1.size).to eq 10
         expect(files2).to eq files1
       end
-
     end
   end
 end

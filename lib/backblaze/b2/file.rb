@@ -14,7 +14,7 @@ module Backblaze::B2
 
     class << self
       def create(data:, bucket:, name: nil, base_name: '', content_type: 'b2/x-auto', info: {})
-        raise ArgumentError.new('data must not be nil') if data.nil?
+        raise ArgumentError, 'data must not be nil' if data.nil?
 
         case bucket
         when String
@@ -22,66 +22,69 @@ module Backblaze::B2
         when Bucket
           upload_url = bucket.upload_url
         else
-          raise ArgumentError.new('You must pass a bucket')
+          raise ArgumentError, 'You must pass a bucket'
         end
 
-        close_file = false
         case data
         when String
           data.force_encoding('ASCII-8BIT')
-          raise ArgumentError.new('Must provide a file name for data') if name.nil?
-        when ::File, Tempfile
+          raise ArgumentError, 'Must provide a file name for data' if name.nil?
+        when ::File, Tempfile, ::Paperclip::UploadedFileAdapter
           data.binmode
           data.rewind
           if name.nil?
-            raise ArgumentError.new('Must provide a file name with Tempfiles') if data.is_a? Tempfile
+            raise ArgumentError, 'Must provide a file name with Tempfiles' if data.is_a? Tempfile
             name = ::File.basename(data)
           end
         else
-          raise ArgumentError.new('Must provide a file name with streams') if name.nil?
+          raise ArgumentError, 'Must provide a file name with streams' if name.nil?
           if data.respond_to?(:read)
-            close_file = true
             temp = Tempfile.new(name)
             temp.binmode
             IO.copy_stream(data, temp)
             data = temp
             data.rewind
           else
-            raise ArgumentError.new('Unsuitable data type. Please read the docs.')
+            raise ArgumentError, 'Unsuitable data type. Please read the docs.'
           end
         end
 
         uri = URI(upload_url[:url])
         req = Net::HTTP::Post.new(uri)
 
-        req.add_field("Authorization", upload_url[:token])
-        req.add_field("X-Bz-File-Name", "#{base_name}/#{name}".tr_s('/', '/').sub(/\A\//, ''))
-        req.add_field("Content-Type", content_type)
-        req.add_field("Content-Length", data.size)
+        req.add_field('Authorization', upload_url[:token])
+        req.add_field('X-Bz-File-Name', "#{base_name}/#{name}".tr_s('/', '/').sub(/\A\//, ''))
+        req.add_field('Content-Type', content_type)
+        req.add_field('Content-Length', data.size)
 
         digest = Digest::SHA1.new
         if data.is_a? String
           digest.update(data)
           req.body = data
+        elsif data.is_a? ::Paperclip::UploadedFileAdapter
+          digest.file(data.path)
+          data.rewind
+          req.body_stream = data
         else
           digest.file(data)
           data.rewind
           req.body_stream = data
         end
 
-        req.add_field("X-Bz-Content-Sha1", digest)
+        req.add_field('X-Bz-Content-Sha1', digest)
 
         info.first(10).map do |key, value|
-          req.add_field("X-Bz-Info-#{URI.encode(key)}", value)
+          encoded_key = URI.encode_www_form_component(key)
+          req.add_field("X-Bz-Info-#{encoded_key}", value)
         end
 
         http = Net::HTTP.new(req.uri.host, req.uri.port)
         http.use_ssl = (req.uri.scheme == 'https')
-        res = http.start {|make| make.request(req)}
+        res = http.start { |make| make.request(req) }
 
         response = JSON.parse(res.body)
 
-        raise Backblaze::FileError.new(response) unless res.code.to_i == 200
+        raise Backblaze::FileError, response unless res.code.to_i == 200
 
         params = {
           file_name: response['fileName'],
@@ -89,6 +92,9 @@ module Backblaze::B2
           size: response['contentLength'],
           file_id: response['fileId'],
           upload_timestamp: Time.now.to_i * 1000,
+          content_length: data.size,
+          content_type: content_type,
+          content_sha1: digest,
           action: 'upload'
         }
 
@@ -96,10 +102,8 @@ module Backblaze::B2
       end
     end
 
-    def file_name
-      @file_name
-    end
-    alias_method :name, :file_name
+    attr_reader :file_name
+    alias name file_name
 
     def versions
       unless @fetched_all
@@ -143,9 +147,7 @@ module Backblaze::B2
       end
       threads.map(&:join)
       @destroyed = true
-      if errors.any?
-        raise Backblaze::DestroyErrors.new(errors)
-      end
+      raise Backblaze::DestroyErrors, errors if errors.any?
     end
 
     def exists?
