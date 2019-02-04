@@ -1,5 +1,7 @@
 module Backblaze::B2
   class FileObject < Base
+    MEGABYTE = 1_000_000
+
     def initialize(file_name:, bucket_id:, versions: nil, **file_version_args)
       @file_name = file_name
       @bucket_id = bucket_id
@@ -22,15 +24,10 @@ module Backblaze::B2
       #   will be interpretted as ASCII-8BIT and then sent as the body of the request.
       # @param [Backblaze::B2::Bucket, String] bucket the bucket to upload this file to
       # @raise [Backblaze::BucketError] unable to create the specified bucket
-      def create(data:, bucket:, name: nil, base_name: '', content_type: 'b2/x-auto', info: {})
+      def create(data:, bucket:, name: nil, base_name: '', content_type: 'b2/x-auto', info: {}, chunk_size: 100)
         raise ArgumentError.new('data must not be nil') if data.nil?
 
-        case bucket
-        when String
-          upload_url = Bucket.upload_url(bucket_id: bucket)
-        when Bucket
-          upload_url = bucket.upload_url
-        else
+        if !bucket.is_a?(String) || !bucket.is_a?(Bucket)
           raise ArgumentError.new('You must pass a bucket')
         end
 
@@ -60,39 +57,98 @@ module Backblaze::B2
           end
         end
 
-        uri = URI(upload_url[:url])
-        req = Net::HTTP::Post.new(uri)
+        file_name = "#{base_name}/#{name}".tr_s('/', '/').sub(/\A\//, '')
+        chunk = MEGABYTE * chunk_size
 
-        req.add_field("Authorization", upload_url[:token])
-        req.add_field("X-Bz-File-Name", "#{base_name}/#{name}".tr_s('/', '/').sub(/\A\//, ''))
-        req.add_field("Content-Type", content_type)
-        req.add_field("Content-Length", data.size)
+        if file.size > chunk && !data.is_a?(String)
+          # UPLOAD LARGE FILE
+          start_request = {
+            fileName: file_name,
+            contentType: content_type,
+            fileInfo: info
+          }
+          if bucket.is_a?(String)
+            start_request[:bucketId] = bucket
+          else
+            start_request[:bucketId] = bucket.bucket_id
+          end
 
-        digest = Digest::SHA1.new
-        if data.is_a? String
-          digest.update(data)
-          req.body = data
+          start_parsed = post('/b2_start_large_file', body: start_request.to_json)
+          raise Backblaze::FileError.new(start_parsed) unless start_parsed.code == 200
+
+          upload_parsed = post('/b2_get_upload_part_url', body: {fileId: start_parsed[:fileId]}.to_json)
+          raise Backblaze::FileError.new(upload_parsed) unless upload_parsed.code == 200
+
+          10_000.times do |part_num|
+            temp = Tempfile.new(name)
+            temp.binmode
+            IO.copy_stream(data, temp, chunk, chunk * part_num)
+            data = temp
+            data.rewind
+
+            digest = Digest::SHA1.new
+            if data.is_a? String
+              digest.update(data)
+              req.body = data
+            else
+              digest.file(data)
+              data.rewind
+              req.body_stream = data
+            end
+
+            req.add_field("Authorization", upload_url[:token])
+            req.add_field("X-Bz-Part-Number", part_num)
+            req.add_field("Content-Length", data.size)
+            req.add_field("X-Bz-Content-Sha1", digest)
+
+            http = Net::HTTP.new(req.uri.host, req.uri.port)
+            http.use_ssl = (req.uri.scheme == 'https')
+            res = http.start {|make| make.request(req)}
+
+            response = JSON.parse(res.body)
+          end
+
         else
-          digest.file(data)
-          data.rewind
-          req.body_stream = data
+          # UPLOAD NORMAL FILE
+          if bucket.is_a?(String)
+            upload_url = Bucket.upload_url(bucket_id: bucket)
+          else
+            upload_url = bucket.upload_url
+          end
+
+          uri = URI(upload_url[:url])
+          req = Net::HTTP::Post.new(uri)
+
+          digest = Digest::SHA1.new
+          if data.is_a? String
+            digest.update(data)
+            req.body = data
+          else
+            digest.file(data)
+            data.rewind
+            req.body_stream = data
+          end
+
+          req.add_field("Authorization", upload_url[:token])
+          req.add_field("X-Bz-File-Name", file_name)
+          req.add_field("Content-Type", content_type)
+          req.add_field("Content-Length", data.size)
+          req.add_field("X-Bz-Content-Sha1", digest)
+
+          info.first(10).map do |key, value|
+            req.add_field("X-Bz-Info-#{URI.encode(key)}", value)
+          end
+
+          http = Net::HTTP.new(req.uri.host, req.uri.port)
+          http.use_ssl = (req.uri.scheme == 'https')
+          res = http.start {|make| make.request(req)}
+
+          response = JSON.parse(res.body)
+
+          raise Backblaze::FileError.new(response) unless res.code.to_i == 200
+
+          FileObject.new(Hash[response.map{|k,v| [Backblaze::Utils.underscore(k).to_sym, v]}])
         end
-
-        req.add_field("X-Bz-Content-Sha1", digest)
-
-        info.first(10).map do |key, value|
-          req.add_field("X-Bz-Info-#{URI.encode(key.to_s)}", value)
-        end
-
-        http = Net::HTTP.new(req.uri.host, req.uri.port)
-        http.use_ssl = (req.uri.scheme == 'https')
-        res = http.start {|make| make.request(req)}
-
-        response = JSON.parse(res.body)
-
-        raise Backblaze::FileError.new(response) unless res.code.to_i == 200
-
-        FileObject.new(Hash[response.map{|k,v| [Backblaze::Utils.underscore(k).to_sym, v]}])
       end
     end
 
