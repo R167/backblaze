@@ -2,17 +2,24 @@
 
 module Backblaze::B2
   class Account
-    # Account key and secrets
-    attr_writer :application_key_id, :application_key
+    # Account key id
+    attr_writer :application_key_id
+    # Account key secret
+    attr_writer :application_key
 
 
     ##
     # Get an account for accessing Backblaze
-    def initialize(options)
-      @api = Api.new(app_key_id, app_key_secret)
+    def initialize(options = {})
     end
 
     def login!
+    end
+
+    private
+
+    def api
+      @api ||= Api.new(@app_key_id, @app_key_secret)
     end
   end
 end

@@ -56,13 +56,14 @@ module Backblaze::B2
     end
 
     ##
-    # Get an account authorization
+    # Used to log in to the B2 API. Returns an authorization token that can be used for account-level operations,
+    # and a URL that should be used as the base URL for subsequent API calls.
     # @return [Hash] account attributes
     # @see https://www.backblaze.com/b2/docs/b2_authorize_account.html
     def authorize_account
       response = HTTP.basic_auth(user: @app_key_id, pass: @app_key_secret).get(AUTH_ENDPOINT)
 
-      if response.status.ok?
+      if response.status.success?
         data = parse(response)
         @download_url = data['downloadUrl']
         @api_url = data['apiUrl']
@@ -71,15 +72,69 @@ module Backblaze::B2
         data
       else
         # TODO: Error handling
-        raise
+        raise ApiError.new(response)
       end
     end
 
     ##
-    # Cancel an in progress large file upload
+    # Cancels the upload of a large file, and deletes all of the parts that have been uploaded.
+    # @param file_id from {#start_large_file} to cancel
+    # @return info about canceled file
     # @see https://www.backblaze.com/b2/docs/b2_cancel_large_file.html
     def cancel_large_file(file_id)
       post_api('b2_cancel_large_file', fileId: file_id)
+    end
+
+    ##
+    # Creates a new file by copying from an existing file.
+    #
+    # When copying, you can either just copy everything about the file, or opt to change the content_type and file_info.
+    # If you set the content type, then you will use the `REPLACE` directive. Otherwise, `COPY` is the default.
+    # @param source_id file id of the source file
+    # @param dest_name destination filename (equivalent to uploading a file)
+    # @param bucket_id: destination bucket for the new file. Defaults to the same as source.
+    # @param [String, Range<Integer>] range: byte range to copy.
+    #   This can be either a string (assumed of form `bytes=start-end` like in a range header)
+    #   or it can be a range object.
+    # @param content_type: mime type of the copied file (will default to source)
+    # @param file_info: new file info to specify when copying
+    # @return file info
+    # @see https://www.backblaze.com/b2/docs/b2_copy_file.html
+    def copy_file(source_id, dest_name, bucket_id: nil, range: nil, content_type: nil, file_info: nil)
+      replace = !content_type.nil?
+      request_attributes = {
+        sourceFileId: source_id,
+        fileName: dest_name,
+        destinationBucketId: bucket_id,
+        range: construct_range(range),
+        metadataDirective: 'COPY',
+      }
+      if replace
+        request_attributes.merge!({
+          contentType: content_type,
+          fileInfo: file_info,
+          metadataDirective: 'REPLACE'
+        })
+      end
+      post_api('b2_copy_file', request_attributes)
+    end
+
+    ##
+    # Copies from an existing B2 file, storing it as a part of a large file which has already been
+    # started (with {#start_large_file}).
+    # @param source_id file id of the source file being copied.
+    # @param dest_id file id of the large file the part will belong to
+    # @param part_number the part number for this entry in the large file
+    # @param range: (see #copy_file)
+    # @see https://www.backblaze.com/b2/docs/b2_copy_part.html
+    def copy_part(source_id, dest_id, part_number, range: nil)
+      request_attributes = {
+        sourceFileId: source_id,
+        largeFileId: dest_id,
+        partNumber: part_number,
+        range: construct_range(range),
+      }
+      post_api('b2_copy_part', request_attributes)
     end
 
     ##
@@ -166,7 +221,14 @@ module Backblaze::B2
       body = json_dump(body) unless body.is_a?(String)
       path = build_api_url(endpoint)
       response = connection.post(endpoint, body: body)
-      parse(response)
+      if response.status.success?
+        parse(response)
+      else
+        # we got an error
+        err = ApiError.new(response)
+        # Potentially do some error handling here.
+        raise err
+      end
     end
 
     def connection_info
@@ -187,6 +249,24 @@ module Backblaze::B2
 
     def json_dump(data)
       MultiJson.json_dump(data)
+    end
+
+    def construct_range(range)
+      range_param = nil
+      if range
+        if range.is_a?(Range)
+          range_param = "bytes=".dup
+          # Make range start at begin or 0 (if negative/unbounded)
+          range_param << [(range.begin || 0), 0].max.to_s
+          range_param << "-"
+          # if we for some reason got an endless range...
+          range_param << (range.end && range.exclude_end? ? range.end - 1 : range.end).to_s
+        else
+          range_param = range.to_s
+        end
+      end
+
+      range_param
     end
 
   end

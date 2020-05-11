@@ -12,15 +12,30 @@ gem 'backblaze'
 
 And then execute:
 
-    $ bundle
+```bash
+bundle
+```
 
 Or install it yourself as:
 
-    $ gem install backblaze
+```bash
+gem install backblaze
+```
+
+## Getting Started
+
+Usage requires having a Backblaze account. You can sign up for one on [backblaze.com](https://www.backblaze.com/b2/cloud-storage.html), or follow their quick [Getting Started](https://www.backblaze.com/b2/docs/quick_account.html) guide. Once you have your account and account key, you're ready to go.
 
 ## Usage
 
-TODO: Write usage instructions here
+For simple usage, `Backblaze::B2` provides a default account object and will try to configure itself through the environment variables `BACKBLAZE_B2_API_KEY_ID` and `BACKBLAZE_B2_API_KEY`. Refer to their [Application Keys](https://www.backblaze.com/b2/docs/application_keys.html) documentation for more info one what these keys mean.
+
+```ruby
+# ENV['BACKBLAZE_B2_API_KEY_ID'] #=> "some_api_key_id"
+# ENV['BACKBLAZE_B2_API_KEY_ID'] #=> "some_api_key_(the_secret_part)"
+
+Backblaze::B2.default_account #=> An account object
+```
 
 ## Development
 
@@ -30,8 +45,7 @@ To install this gem onto your local machine, run `bundle exec rake install`. To 
 
 ## Contributing
 
-Bug reports and pull requests are welcome on GitHub at https://github.com/[USERNAME]/backblaze. This project is intended to be a safe, welcoming space for collaboration, and contributors are expected to adhere to the [Contributor Covenant](contributor-covenant.org) code of conduct.
-
+Bug reports and pull requests are welcome on GitHub at [https://github.com/R167/backblaze]. This project is intended to be a safe, welcoming space for collaboration, and contributors are expected to adhere to the [Contributor Covenant](https://contributor-covenant.org) code of conduct.
 
 ## License
 
