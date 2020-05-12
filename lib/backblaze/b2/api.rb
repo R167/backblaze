@@ -30,12 +30,12 @@ module Backblaze::B2
     ##
     # Helper for accessing B2 API operations. This keeps track of minimal state, persisting the account_id and credentials
     # for reauthorization.
-    # @param app_key_id Application Key ID for authenticating with Backblaze
-    # @param app_key_secret Application Key for authenticating with Backblaze
-    def initialize(app_key_id, app_key_secret)
-      @app_key_id = app_key_id
+    # @param application_key_id Application Key ID for authenticating with Backblaze
+    # @param application_key Application Key for authenticating with Backblaze
+    def initialize(application_key_id, application_key)
+      @app_key_id = application_key_id
       @connection_key = :"b2_connection_#{self.object_id}"
-      @app_key_secret = app_key_secret
+      @app_key_secret = application_key
       @auth_token = nil
     end
 

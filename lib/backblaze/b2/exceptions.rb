@@ -9,11 +9,13 @@ module Backblaze::B2
   class Error < StandardError; end
 
   ##
+  # Validations need to pass before action can occur
+  class ValidationError < Error; end
+
+  ##
   # Errors encountered when calling the api
   # @see https://www.backblaze.com/b2/docs/calling.html#error_handling
   class ApiError < Error
-    # @!attrubte [r] retry_after
-    # Status of the
     attr_reader :status, :code, :retry_after
 
     def initialize(msg="", code='__unspecified', status=-1, retry_after=nil)

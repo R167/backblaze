@@ -4,18 +4,24 @@ module Backblaze::B2
   class Account
     extend Forwardable
 
-    # Account key id
-    attr_writer :application_key_id
-    # Account key secret
-    attr_writer :application_key
+    attr_reader :api
 
     ##
     # Get an account for accessing Backblaze
-    def initialize(options = {})
-      @application_key = options[:application_key]
-      @application_key_id = options[:application_key_id]
+    # @param application_key_id (see Api#initialize)
+    # @param application_key (see Api#initialize)
+    # @raise [ValidationError] Required parameters must be set to valid values
+    def initialize(application_key_id:, application_key:, reauthorize: true)
+      @application_key = application_key
+      @application_key_id = application_key_id
 
-      api.authorize_account
+      unless can_login?
+        raise ValidationError, "Conditions not satisfied for logging in. Did you provide API key and call {Account#login!}?"
+      end
+
+      @reauth = reauthorize
+      @api = Api.new(@application_key_id, @application_key)
+      @api.authorize_account
     end
 
     ##
@@ -24,10 +30,12 @@ module Backblaze::B2
       api.with_persistent_connection(&block)
     end
 
+    private
+
     ##
-    # Get the {Api} instance for this account.
-    def api
-      @api ||= Api.new(@application_key_id, @application_key)
+    # Check if all the parameters are set to allow login
+    def can_login?
+      !!(@application_key && @application_key_id)
     end
   end
 end
