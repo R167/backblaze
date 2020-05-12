@@ -32,20 +32,16 @@ For simple usage, `Backblaze::B2` provides a default account object and will try
 
 ```ruby
 # ENV['BACKBLAZE_B2_API_KEY_ID'] #=> "some_api_key_id"
-# ENV['BACKBLAZE_B2_API_KEY_ID'] #=> "some_api_key_(the_secret_part)"
+# ENV['BACKBLAZE_B2_API_KEY']    #=> "some_api_key_(the_secret_part)"
 
 Backblaze::B2.default_account #=> An account object
 ```
 
-## Development
+## Versioning
 
-After checking out the repo, run `bin/setup` to install dependencies. Then, run `rake rspec` to run the tests. You can also run `bin/console` for an interactive prompt that will allow you to experiment.
+This library aims to adhere to [Semantic Versioning 2.0.0](https://semver.org/). Violations of this scheme should be reported as bugs. Specifically, if a minor or patch version is released that breaks backward compatibility, that version should be yanked and/or a new version should be released that restores compatibility. Breaking changes to the public API will only be introduced with new major versions. As a result of this policy, you can (and should) specify a dependency on this gem using the Pessimistic Version Constraint with two digits of precision.
 
-To install this gem onto your local machine, run `bundle exec rake install`. To release a new version, update the version number in `version.rb`, and then run `bundle exec rake release`, which will create a git tag for the version, push git commits and tags, and push the `.gem` file to [rubygems.org](https://rubygems.org).
-
-## Contributing
-
-Bug reports and pull requests are welcome on GitHub at [https://github.com/R167/backblaze]. This project is intended to be a safe, welcoming space for collaboration, and contributors are expected to adhere to the [Contributor Covenant](https://contributor-covenant.org) code of conduct.
+Note: The gem is currently still in 0.y.z. Per Sem Ver 2.0.0, breaking changes may still be made on what would normally be considered "minor" versions. If you have a critical application, I would recommend waiting for a major version release, or at least locking down to the patch. Ultimately, the goal is to probably have the major version match the Backblaze B2 API version (though I'm not committing to that quite yet).
 
 ## License
 
