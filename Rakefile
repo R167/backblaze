@@ -10,6 +10,11 @@ task :console do
   require "backblaze"
   require "irb"
 
+  def auth!
+    Backblaze::B2.login!
+    Backblaze::B2.default_account
+  end
+
   ARGV.clear
   IRB.start
 end

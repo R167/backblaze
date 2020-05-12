@@ -329,7 +329,9 @@ module Backblaze::B2
     #   Default is to list all.
     # @see https://www.backblaze.com/b2/docs/b2_list_buckets.html
     def list_buckets(bucket_id: nil, bucket_name: nil, types: nil)
-      post_api('b2_list_buckets', accountId: account_id, bucketId: bucket_id, bucketName: bucket_name, bucketTypes: types)
+      post_api('b2_list_buckets', accountId: account_id, bucketId: bucket_id, bucketName: bucket_name, bucketTypes: types).tap do |data|
+        data[:iter] = { key: 'buckets', start_at: nil }
+      end
     end
 
     ##
@@ -344,49 +346,60 @@ module Backblaze::B2
     #   MAX_FILES = 1000
     #   last_file = ''
     #   while !last_file.nil?
-    #     data = api.list_file_names(my_bucket, start_at_name: last_file, count: MAX_FILES)
-    #     last_file = data['nextFileName']
+    #     data = api.list_file_names(my_bucket, start_at: last_file, count: MAX_FILES)
+    #     last_file = data[:iter][:start_at]
     #     data['files'].each do |file|
     #       puts file['fileName']
     #     end
     #   end
     #
     # @param bucket_id The bucket to look for files in.
-    # @param start_at_name The first file name to return. If there is a file with this name, it will be returned in the list.
+    # @param start_at Iteration information
+    # @option start_at :name (nil) The first file name to return. If there is a file with this name, it will be returned in the list.
     #   If not, the first file name after this the first one after this name.
     # @param [Integer<0..1000>] count The maximum number of results to return from this call. The default value is 100,
     #   and the maximum is 10_000. Passing in 0 means to use the default of 100. Every multiple of 1_000 is considered
     #   a seperate billable Class C transaction
     # @param prefix Files returned will be limited to those with the given prefix. Defaults to empty string, which matches all files.
     # @param delimiter Files returned will be limited to those within the top folder, or any one subfolder, split on this char.
-    # @return Hash `{'files' => [...{file info}...], 'nextFileName' => next_file_name}`
+    # @return Hash `{'files' => [...{file info}...], 'nextFileName' => next_file_name, iter: {iteration-data}}`
     # @see https://www.backblaze.com/b2/docs/b2_list_file_names.html
-    def list_file_names(bucket_id, start_at_name: nil, count: 0, prefix: "", delimiter: nil)
+    def list_file_names(bucket_id, start_at: {name: nil}, count: 0, prefix: "", delimiter: nil)
+      start_name = start_at.is_a?(Hash) ? start_at[:name] : start_at
       request_attributes = {
         bucketId: bucket_id,
-        startFileName: start_at,
+        startFileName: start_name,
         maxFileCount: count,
         prefix: prefix,
         delimiter: delimiter
       }
-      post_api('b2_list_file_names', request_attributes)
+      post_api('b2_list_file_names', request_attributes).tap do |data|
+        data[:iter] = { key: 'files', start_at: { name: data['nextFileName'] }, stop: data['nextFileName'].nil? }
+      end
     end
 
     ##
     # Lists all of the versions of all of the files contained in one bucket, in alphabetical order by file name, and by
     # reverse of date/time uploaded for versions of files with the same name.
     # @param (see #list_file_names)
-    # @param start_at_id The first file ID to return. `start_at_name` must also be provided if this is specified.
+    # @option (see #list_file_names)
+    # @option start_at :id (nil) File ID to start at when iterating (start_at[:name] is also required if this is set)
     # @return Hash of `files`, `nextFileName`, and `nextFileId` (see {#list_file_names})
-    def list_file_versions(bucket_id, start_at_name: nil, start_at_id: nil, count: nil, prefix: "", delimiter: nil)
+    def list_file_versions(bucket_id, start_at: {id: nil, name: nil}, count: nil, prefix: "", delimiter: nil)
+      start_name = start_at[:name]
+      start_id = start_at[:id]
       request_attributes = {
         bucketId: bucket_id,
-        startFileName: start_at,
+        startFileName: start_name,
+        startFileId: start_id,
         maxFileCount: count,
         prefix: prefix,
         delimiter: delimiter
       }
-      post_api('b2_list_file_names', request_attributes)
+      post_api('b2_list_file_versions', request_attributes).tap do |data|
+        stop = data['nextFileName'].nil? && data['nextFileId'].nil?
+        data[:iter] = { key: 'files', start_at: {name: data['nextFileName'], id: data['nextFileId']}, stop: stop }
+      end
     end
 
     ##
@@ -396,7 +409,9 @@ module Backblaze::B2
     # @return Hash of `keys` and `nextApplicationKeyId` (for iterating)
     # @see https://www.backblaze.com/b2/docs/b2_list_keys.html
     def list_keys(start_at: nil, count: nil)
-      post_api('b2_list_keys', accountId: account_id, maxKeyCount: count, startApplicationKeyId: start_at)
+      post_api('b2_list_keys', accountId: account_id, maxKeyCount: count, startApplicationKeyId: start_at).tap do |data|
+        data[:iter] = { key: 'keys', start_at: data['nextApplicationKeyId'], stop: data['nextApplicationKeyId'].nil? }
+      end
     end
 
     ##
@@ -407,7 +422,9 @@ module Backblaze::B2
     # @return Hash with `parts` Array and `nextPartNumber` to start at.
     # @see https://www.backblaze.com/b2/docs/b2_list_parts.html
     def list_parts(file_id, start_at: nil, count: nil)
-      post_api('b2_list_keys', accountId: account_id, maxPartCount: count, startPartNumber: start_at)
+      post_api('b2_list_parts', accountId: account_id, maxPartCount: count, startPartNumber: start_at).tap do |data|
+        data[:iter] = { key: 'parts', start_at: data['nextPartNumber'], stop: data['nextPartNumber'].nil? }
+      end
     end
 
     ##
@@ -419,13 +436,16 @@ module Backblaze::B2
     # @return Hash with `files` and `nextFileId`
     # @see https://www.backblaze.com/b2/docs/b2_list_unfinished_large_files.html
     def list_unfinished_large_files(bucket_id, start_at: nil, count: nil, prefix: nil)
+      start_id = start_at.is_a?(Hash) ? start_at[:id] : start_at
       request_attributes = {
         bucketId: bucket_id,
-        startFileId: start_at,
+        startFileId: start_id,
         maxFileCount: count,
         namePrefix: prefix
       }
-      post_api('b2_list_unfinished_large_files', request_attributes)
+      post_api('b2_list_unfinished_large_files', request_attributes).tap do |data|
+        data[:iter] = { key: 'files', start_at: {id: data['nextFileId']}, stop: data['nextFileId'].nil? }
+      end
     end
 
     ##

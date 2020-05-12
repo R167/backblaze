@@ -2,14 +2,15 @@
 
 require 'tempfile'
 require 'forwardable'
-require 'delegate'
 
-require 'backblaze/b2/account'
 require 'backblaze/b2/api'
+require 'backblaze/b2/account'
 require 'backblaze/b2/base'
 require 'backblaze/b2/exceptions'
 require 'backblaze/b2/resource'
 require 'backblaze/b2/bucket'
+require 'backblaze/b2/key'
+require 'backblaze/b2/file_version'
 
 ##
 # Core module for accessing the B2 api.
@@ -80,6 +81,7 @@ module Backblaze::B2
     #   @!method $2
     #     (see Backblaze::B2::Account#$2)
     def_delegator :default_account, :with_persistent_connection
+    def_delegator :default_account, :buckets
 
     # @!endgroup
 
