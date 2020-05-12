@@ -45,11 +45,11 @@ module Backblaze::B2
 
     # @!group Delegated Methods
 
-    # @!macro delegated_method
-    #   @!method $2(...)
-    #     Deletates out to default {Account}
-    #     @see Account#$2
+    # @!macro [attach] delegate_account_method
+    #   @!method $2
+    #     (see Backblaze::B2::Account#$2)
     def_delegator :default_account, :api
+    def_delegator :default_account, :with_persistent_connection
 
     # @!endgroup
 

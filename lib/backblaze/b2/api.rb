@@ -27,15 +27,45 @@ module Backblaze::B2
 
     attr_reader :api_url, :download_url, :account_id, :min_part_size, :recommended_part_size
 
+    ##
+    # Helper for accessing B2 API operations. This keeps track of minimal state, persisting the account_id and credentials
+    # for reauthorization.
+    # @param app_key_id Application Key ID for authenticating with Backblaze
+    # @param app_key_secret Application Key for authenticating with Backblaze
     def initialize(app_key_id, app_key_secret)
       @app_key_id = app_key_id
-      @connection_key = :"b2_#{@app_key_id}"
+      @connection_key = :"b2_connection_#{self.object_id}"
       @app_key_secret = app_key_secret
       @auth_token = nil
     end
 
     ##
     # Perform all nested HTTP api requests over the same connection using HTTP Keep-Alive
+    #
+    # When making several calls in a row, normally each one needs to create a completely new connection, i.e.
+    # TCP connection, TLS handshake, etc. We can easily optimize this by taking advantage of HTTP/1.1 Keep-Alive
+    # by default. By reusing the connection, subsequent calls to the same endpoint only need to be set up once.
+    # Nested calls to this function still use the same connection. All connections are thread local and automatically
+    # closed when the last block exits. Connections are created lazily on the first api invocation.
+    #
+    # @example Nested calls
+    #   account = ...
+    #   account.with_persistent_connection do
+    #     account.with_persistent_connection do
+    #       b = account.api.list_buckets # This request creates the connection
+    #       account.api.list_file_names(b['buckets'][0]['bucketId']) # reuses the previous connection
+    #     end
+    #     account.api.list_keys # Still uses the same connection from above
+    #   end # Connection closed
+    #
+    #   account.api.list_keys # Creates an entirely new HTTP connection
+    #
+    # Make sure you don't do any `fork`ing, etc. inside this call because **Bad Things** will happen.
+    #
+    # @yield Perform all api connections in the block over the same connection
+    # @return last value in the block
+    # @note This only applies to `apiUrl` post requests. Authorize, upload, and download access different hostnames
+    #   and will **not** reuse this connection.
     def with_persistent_connection
       if connection_info[:count] == 0
         connection_info[:conn] = connection.persistent(api_url)
@@ -44,13 +74,9 @@ module Backblaze::B2
       yield
     ensure
       connection_info[:count] -= 1
-    end
-
-    def connection
-      if keep_alive?
-        connection_info[:conn]
-      else
-        HTTP[accept: "application/json"].auth(auth_token)
+      # Close the connection if we are the last one.
+      if connection_info[:count] <= 0
+        connection_info[:conn].close
       end
     end
 
@@ -433,7 +459,7 @@ module Backblaze::B2
     # @param if_revision_is When set, the update will only happen if the revision number stored in the B2 service matches
     #   the one passed in. This can be used to avoid having simultaneous updates make conflicting changes.
     # @return Updated bucket
-    # @raises [ApiError] when the revision did not match
+    # @raise [ApiError] when the revision does not match
     # @see https://www.backblaze.com/b2/docs/b2_update_bucket.html
     def update_bucket(bucket_id, type: nil, info: nil, cors: nil, lifecycle: nil, if_revision_is: nil)
       request_attributes = {
@@ -466,6 +492,16 @@ module Backblaze::B2
     end
 
     ##
+    # Create an HTTP connection for post requests
+    def connection
+      if keep_alive?
+        connection_info[:conn]
+      else
+        HTTP[accept: "application/json"].auth(auth_token)
+      end
+    end
+
+    ##
     # Make a post request to the api endpoint.
     def post_api(endpoint, body={})
       body = dump_json(body) unless body.is_a?(String)
@@ -475,7 +511,7 @@ module Backblaze::B2
         parse_json(response)
       else
         # we got an error
-        err = ApiError.new(response)
+        err = api_error(response)
         # Potentially do some error handling here.
         raise err
       end
@@ -483,6 +519,11 @@ module Backblaze::B2
 
     def connection_info
       Thread.current[@connection_key] ||= {count: 0, conn: nil}
+    end
+
+    # (see Backblaze::B2.api_error)
+    def api_error(response)
+      Backblaze::B2.api_error(response)
     end
 
     ##
