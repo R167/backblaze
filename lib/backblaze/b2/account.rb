@@ -30,6 +30,10 @@ module Backblaze::B2
       api.with_persistent_connection(&block)
     end
 
+    def buckets
+      Bucket.all(api)
+    end
+
     private
 
     ##

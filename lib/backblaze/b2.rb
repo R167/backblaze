@@ -6,7 +6,10 @@ require 'delegate'
 
 require 'backblaze/b2/account'
 require 'backblaze/b2/api'
+require 'backblaze/b2/base'
 require 'backblaze/b2/exceptions'
+require 'backblaze/b2/resource'
+require 'backblaze/b2/bucket'
 
 ##
 # Core module for accessing the B2 api.

@@ -97,7 +97,7 @@ module Backblaze::B2
     # @return [Hash] account attributes
     # @see https://www.backblaze.com/b2/docs/b2_authorize_account.html
     def authorize_account
-      response = HTTP.basic_auth(user: @app_key_id, pass: @app_key_secret).get(AUTH_ENDPOINT)
+      response = HTTP[user_agent: USER_AGENT].basic_auth(user: @app_key_id, pass: @app_key_secret).follow.get(AUTH_ENDPOINT)
 
       if response.status.success?
         data = parse_json(response)
@@ -497,7 +497,7 @@ module Backblaze::B2
       if keep_alive?
         connection_info[:conn]
       else
-        HTTP[accept: "application/json"].auth(auth_token)
+        HTTP[accept: "application/json", user_agent: USER_AGENT].auth(auth_token)
       end
     end
 
