@@ -11,15 +11,14 @@ module Backblaze::B2
     ##
     # Get an account for accessing Backblaze
     def initialize(options = {})
-    end
+      @application_key = options[:application_key]
+      @application_key_id = options[:application_key_id]
 
-    def login!
+      api.authorize_account
     end
-
-    private
 
     def api
-      @api ||= Api.new(@app_key_id, @app_key_secret)
+      @api ||= Api.new(@application_key_id, @application_key)
     end
   end
 end

@@ -37,6 +37,8 @@ For simple usage, `Backblaze::B2` provides a default account object and will try
 Backblaze::B2.default_account #=> An account object
 ```
 
+If for some reason you just want a minimal interface for interacting with B2, you can just use `Backblaze::B2::Api` directly through `require "backblaze/b2/api"`.
+
 ## Versioning
 
 This library aims to adhere to [Semantic Versioning 2.0.0](https://semver.org/). Violations of this scheme should be reported as bugs. Specifically, if a minor or patch version is released that breaks backward compatibility, that version should be yanked and/or a new version should be released that restores compatibility. Breaking changes to the public API will only be introduced with new major versions. As a result of this policy, you can (and should) specify a dependency on this gem using the Pessimistic Version Constraint with two digits of precision.

@@ -6,16 +6,27 @@ require 'digest/sha1'
 require 'delegate'
 
 require 'backblaze/b2/account'
+require 'backblaze/b2/api'
 require 'backblaze/b2/exceptions'
 
 module Backblaze::B2
+  ENV_KEY_ID = 'BACKBLAZE_B2_API_KEY_ID'
+  ENV_KEY_SECRET = 'BACKBLAZE_B2_API_KEY'
+
   class << self
+    extend Forwardable
 
     ##
     # Default {Account} instance
     # @return [Account] the default account
     def default_account
-      @account ||= Account.new
+      @account ||= create_account
+    end
+
+    ##
+    # Load .env files
+    def dotenv!
+      require 'dotenv/load'
     end
 
     ##
@@ -38,10 +49,18 @@ module Backblaze::B2
     #   @!method $2(...)
     #     Deletates out to default {Account}
     #     @see Account#$2
-    def_delegator :default_account, :login!
-    # def_delegator :default_account,
+    def_delegator :default_account, :api
 
     # @!endgroup
+
+    private
+
+    def create_account
+      Account.new({
+        application_key_id: ENV[ENV_KEY_ID],
+        application_key: ENV[ENV_KEY_SECRET]
+      })
+    end
 
   end
 end
