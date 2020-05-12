@@ -8,7 +8,7 @@ require 'backblaze/b2/exceptions'
 
 module Backblaze::B2
   ##
-  # Minimal wrapper around the b2 api to handle basic things like connections,
+  # Minimal wrapper around the B2 API to handle basic things like connections,
   # urls, etc.
   class Api
     API_VERSION = "v2"
@@ -17,6 +17,11 @@ module Backblaze::B2
     # User agent for all requests in this gem. This follows backblaze's user agent recommendations
     # listed on their [integration checklist](https://www.backblaze.com/b2/docs/integration_checklist.html)
     USER_AGENT = "backblaze-rb/#{Backblaze::VERSION}+#{RUBY_ENGINE}/#{RUBY_VERSION}"
+
+    KEY_CAPABILITIES = %w(listKeys writeKeys deleteKeys).freeze
+    BUCKET_CAPABILITIES = %w(listBuckets writeBuckets deleteBuckets).freeze
+    FILE_CAPABILITES = %w(listFiles readFiles shareFiles writeFiles deleteFiles).freeze
+    CAPABILITIES = (KEY_CAPABILITIES + BUCKET_CAPABILITIES + FILE_CAPABILITES).freeze
 
     VALID_DOWNLOAD_DURATION = (1..604800).freeze
 
@@ -104,12 +109,12 @@ module Backblaze::B2
     # If you set the content type, then you will use the `REPLACE` directive. Otherwise, `COPY` is the default.
     # @param source_id file id of the source file
     # @param dest_name destination filename (equivalent to uploading a file)
-    # @param bucket_id: destination bucket for the new file. Defaults to the same as source.
-    # @param [String, Range<Integer>] range: byte range to copy.
+    # @param bucket_id destination bucket for the new file. Defaults to the same as source.
+    # @param [String, Range<Integer>] range byte range to copy.
     #   This can be either a string (assumed of form `bytes=start-end` like in a range header)
     #   or it can be a range object.
-    # @param content_type: mime type of the copied file (will default to source)
-    # @param file_info: new file info to specify when copying
+    # @param content_type mime type of the copied file (will default to source)
+    # @param file_info new file info to specify when copying
     # @return file info
     # @see https://www.backblaze.com/b2/docs/b2_copy_file.html
     def copy_file(source_id, dest_name, bucket_id: nil, range: nil, content_type: nil, file_info: nil)
@@ -152,11 +157,11 @@ module Backblaze::B2
     ##
     # Create a bucket for the current account with the given attributes
     # @param name Bucket name
-    # @param public: Bucket public/private visability
-    # @param info: Additional bucket meta data. This is where you can specify
+    # @param public Bucket public/private visability
+    # @param info Additional bucket meta data. This is where you can specify
     #   bucket wide `Cache-Control` options
-    # @param cors: list of cors rules
-    # @param lifecycle: list of lifecyle rules
+    # @param cors list of cors rules
+    # @param lifecycle list of lifecyle rules
     # @return [Hash] bucket creation attributes
     # @see https://www.backblaze.com/b2/docs/lifecycle_rules.html Lifecycle Rules
     # @see https://www.backblaze.com/b2/docs/cors_rules.html CORS Rules
@@ -173,6 +178,17 @@ module Backblaze::B2
       post_api('b2_create_bucket', request_attributes)
     end
 
+    ##
+    # Creates a new application key.
+    # @param name New key name (this is for human use only and does not identify the key nor need to be unique)
+    # @param [Array] capabilities A list of capabilities for the key. Refer to {CAPABILITIES} for valid values.
+    # @param [Integer] expires_in Number of seconds this key is valid for. If specified, must be less than 1_000 days
+    #   (in seconds). Default is no expiration.
+    # @param bucket_id Restrict the created key to only accessing the specified bucket.
+    # @param prefix Restrict the created key to only accessing files that start with `prefix`. If this is specified,
+    #   `bucket_id` is required as well.
+    # @return Attributes of a new key
+    # @see https://www.backblaze.com/b2/docs/b2_create_key.html
     def create_key(name, capabilities, expires_in: nil, bucket_id: nil, prefix: nil)
       request_attributes = {
         accountId: account_id,
@@ -196,7 +212,7 @@ module Backblaze::B2
     ##
     # Deletes one version of a file from B2.
     # @param name name of the file
-    # @parma file_id version of this file to delete
+    # @param file_id version of this file to delete
     # @see https://www.backblaze.com/b2/docs/b2_delete_file_version.html
     def delete_file_version(name, file_id)
       post_api('b2_delete_file_version', fileName: name, fileId: file_id)
@@ -229,9 +245,9 @@ module Backblaze::B2
     # or passed as a Hash to `b2_headers:`. Note: the keys are not modified at all so you must exactly specify the keys
     # in camelCase.
     # @param bucket_id bucket where this authorization will be valid
-    # @param prefix: file name prefix for downloading
-    # @param expires_in: number of seconds this token is valid for. Can be in the range of 1 second to 1 week
-    # @param b2_headers: header fields that are forced on download
+    # @param prefix file name prefix for downloading
+    # @param expires_in number of seconds this token is valid for. Can be in the range of 1 second to 1 week
+    # @param b2_headers header fields that are forced on download
     # @see https://www.backblaze.com/b2/docs/b2_get_download_authorization.html
     def get_download_authorization(bucket_id, prefix:, expires_in:, b2_headers: {}, **kwargs)
       request_attributes = {
@@ -281,17 +297,155 @@ module Backblaze::B2
     # Lists buckets associated with an account, in alphabetical order by bucket name
     #
     # When using an authorization token that is restricted to a bucket, you must include the bucketId or bucketName of that bucket in the request, or the request will be denied.
-    # @param bucket_id: ID of a specific bucket to list
-    # @param bucket_name: Name of a specific bucket to list
-    # @param [Array] types: types of buckets to list. Must be only of `[:all, :allPublic, :allPrivate, :snapshot]`.
+    # @param bucket_id ID of a specific bucket to list
+    # @param bucket_name Name of a specific bucket to list
+    # @param [Array] types types of buckets to list. Must be only of `[:all, :allPublic, :allPrivate, :snapshot]`.
     #   Default is to list all.
     # @see https://www.backblaze.com/b2/docs/b2_list_buckets.html
     def list_buckets(bucket_id: nil, bucket_name: nil, types: nil)
       post_api('b2_list_buckets', accountId: account_id, bucketId: bucket_id, bucketName: bucket_name, bucketTypes: types)
     end
 
-    def start_large_file
+    ##
+    # Lists the names of all files in a bucket, starting at a given name
+    #
+    # Will return a list of files and the next file name to start at. If nextFileName is nil, then there are no more files
+    # to iterate through in the bucket.
+    #
+    # @example Iterate over all files and print names
+    #   api = ...
+    #   my_bucket = '<some-bucket-id>'
+    #   MAX_FILES = 1000
+    #   last_file = ''
+    #   while !last_file.nil?
+    #     data = api.list_file_names(my_bucket, start_at_name: last_file, count: MAX_FILES)
+    #     last_file = data['nextFileName']
+    #     data['files'].each do |file|
+    #       puts file['fileName']
+    #     end
+    #   end
+    #
+    # @param bucket_id The bucket to look for files in.
+    # @param start_at_name The first file name to return. If there is a file with this name, it will be returned in the list.
+    #   If not, the first file name after this the first one after this name.
+    # @param [Integer<0..1000>] count The maximum number of results to return from this call. The default value is 100,
+    #   and the maximum is 10_000. Passing in 0 means to use the default of 100. Every multiple of 1_000 is considered
+    #   a seperate billable Class C transaction
+    # @param prefix Files returned will be limited to those with the given prefix. Defaults to empty string, which matches all files.
+    # @param delimiter Files returned will be limited to those within the top folder, or any one subfolder, split on this char.
+    # @return Hash `{'files' => [...{file info}...], 'nextFileName' => next_file_name}`
+    # @see https://www.backblaze.com/b2/docs/b2_list_file_names.html
+    def list_file_names(bucket_id, start_at_name: nil, count: 0, prefix: "", delimiter: nil)
+      request_attributes = {
+        bucketId: bucket_id,
+        startFileName: start_at,
+        maxFileCount: count,
+        prefix: prefix,
+        delimiter: delimiter
+      }
+      post_api('b2_list_file_names', request_attributes)
+    end
 
+    ##
+    # Lists all of the versions of all of the files contained in one bucket, in alphabetical order by file name, and by
+    # reverse of date/time uploaded for versions of files with the same name.
+    # @param (see #list_file_names)
+    # @param start_at_id The first file ID to return. `start_at_name` must also be provided if this is specified.
+    # @return Hash of `files`, `nextFileName`, and `nextFileId` (see {#list_file_names})
+    def list_file_versions(bucket_id, start_at_name: nil, start_at_id: nil, count: nil, prefix: "", delimiter: nil)
+      request_attributes = {
+        bucketId: bucket_id,
+        startFileName: start_at,
+        maxFileCount: count,
+        prefix: prefix,
+        delimiter: delimiter
+      }
+      post_api('b2_list_file_names', request_attributes)
+    end
+
+    ##
+    # Lists application keys associated with the account.
+    # @param start_at The first key to return. Used for iterating, similar to `start_at_name` in {#list_file_names}.
+    # @param count (see #list_file_names)
+    # @return Hash of `keys` and `nextApplicationKeyId` (for iterating)
+    # @see https://www.backblaze.com/b2/docs/b2_list_keys.html
+    def list_keys(start_at: nil, count: nil)
+      post_api('b2_list_keys', accountId: account_id, maxKeyCount: count, startApplicationKeyId: start_at)
+    end
+
+    ##
+    # Lists the parts that have been uploaded for a large file that has not been finished yet.
+    # @param file_id The ID returned by {#start_large_file}. This is the file whose parts will be listed.
+    # @param start_at First part number to start at. Defaults to first part uploaded for this file.
+    # @param count The maximum number of parts to return from this call. The default value is 100, and the maximum allowed is 1000.
+    # @return Hash with `parts` Array and `nextPartNumber` to start at.
+    # @see https://www.backblaze.com/b2/docs/b2_list_parts.html
+    def list_parts(file_id, start_at: nil, count: nil)
+      post_api('b2_list_keys', accountId: account_id, maxPartCount: count, startPartNumber: start_at)
+    end
+
+    ##
+    # Lists information about large file uploads that have been started, but have not been finished or canceled.
+    # @param bucket_id The bucket to look for file names in.
+    # @param start_at The first upload to return. If there is an upload with this ID, it will be returned in the list. If not, the first upload after this the first one after this ID.
+    # @param count The maximum number of files to return from this call. The default value is 100, and the maximum allowed is 100.
+    # @param prefix (see #list_file_names)
+    # @return Hash with `files` and `nextFileId`
+    # @see https://www.backblaze.com/b2/docs/b2_list_unfinished_large_files.html
+    def list_unfinished_large_files(bucket_id, start_at: nil, count: nil, prefix: nil)
+      request_attributes = {
+        bucketId: bucket_id,
+        startFileId: start_at,
+        maxFileCount: count,
+        namePrefix: prefix
+      }
+      post_api('b2_list_unfinished_large_files', request_attributes)
+    end
+
+    ##
+    # Prepares for uploading the parts of a large file.
+    # @param bucket_id
+    # @param name
+    # @param content_type MIME type of the file being uploaded. Defaults to autodecting the type
+    # @param [Hash] info Addtional metadata about the file which will be returned on download. Max of 10 keys.
+    #   It is recommended to set at least `{src_last_modified_millis: <millis-since-1970>, large_file_sha1: <40-byte-hex>}`.
+    #   You can also set `b2-cache-control`, etc. to set the `Cache-Control` header for download.
+    # @return File info hash
+    # @see https://www.backblaze.com/b2/docs/b2_start_large_file.html
+    # @see https://www.backblaze.com/b2/docs/files.html#fileInfo How Backblaze handles file info and b2-metadata
+    # @see https://www.backblaze.com/b2/docs/content-types.html Automatic content type mappings
+    def start_large_file(bucket_id, name, content_type: "b2/x-auto", info: {})
+      request_attributes = {
+        bucketId: bucket_id,
+        fileName: name,
+        contentType: content_type,
+        fileInfo: info
+      }
+      post_api('b2_start_large_file', request_attributes)
+    end
+
+    ##
+    # Update metadata about an existing bucket.
+    # @param bucket_id ID of the bucket to update
+    # @param info (see #create_bucket)
+    # @param cors (see #create_bucket)
+    # @param lifecycle (see #create_bucket)
+    # @param if_revision_is When set, the update will only happen if the revision number stored in the B2 service matches
+    #   the one passed in. This can be used to avoid having simultaneous updates make conflicting changes.
+    # @return Updated bucket
+    # @raises [ApiError] when the revision did not match
+    # @see https://www.backblaze.com/b2/docs/b2_update_bucket.html
+    def update_bucket(bucket_id, type: nil, info: nil, cors: nil, lifecycle: nil, if_revision_is: nil)
+      request_attributes = {
+        accountId: account_id,
+        bucketId: bucket_id,
+        bucketType: type,
+        bucketInfo: info,
+        corsRules: cors,
+        lifecycleRules: lifecycle,
+        ifRevisionIs: if_revision_is
+      }
+      post_api('b2_update_bucket', request_attributes)
     end
 
     # @!endgroup
