@@ -19,12 +19,14 @@ module Backblaze::B2
         new(account, attrs: attributes)
       end
 
-      private
+      protected
 
       def attributes_to_symbols(attrs)
         Hash[attrs.map { |attr| [attr.freeze, symbolize_key(attr)] }]
       end
 
+      ##
+      # Create these attributes on the class
       def create_attributes(attrs)
         str_to_sym = attributes_to_symbols(attrs)
         sym_to_str = str_to_sym.invert

@@ -5,11 +5,13 @@ module Backblaze::B2
     include Resource
 
     ATTRIBUTES = %w(accountId action bucketId contentLength contentSha1 contentType fileId fileInfo fileName uploadTimestamp)
+    CONFIG = %i(content_type file_info file_name)
 
     create_attributes ATTRIBUTES
 
     alias_method :name, :file_name
     alias_method :id, :file_id
+    alias_method :size, :content_length
 
     def initialize(account = nil, bucket: nil, attrs: {})
       if bucket.is_a?(Bucket)
@@ -25,6 +27,7 @@ module Backblaze::B2
       super(account, attrs: attrs)
     end
 
+    # @return [Array<FileVersion>] List of all ovrsions of this file
     def all_versions!
       self.class.find_versions_of_file(bucket: bucket, file_name: file_name)
     end
@@ -37,6 +40,7 @@ module Backblaze::B2
       result if result && result.name == name
     end
 
+    # @return [Bucket] The file's bucket
     def bucket
       @bucket
     end
@@ -65,7 +69,7 @@ module Backblaze::B2
       # @overload find_files(..., &block)
       #   @yield When included, used to process each file
       #   @yieldparam [FileVersion] file Each found file
-      #   @return [void] No meaningful return when called with block
+      #   @return [Hash] iterator information about this run
       # @overload find_files(...)
       #   @return [Array<FileVersion>] List of all the files found within our bounds
       def find_files(bucket:, count:, start_at: nil, batch_size: 1000, prefix: nil, delimiter: nil)
@@ -88,8 +92,9 @@ module Backblaze::B2
 
       ##
       # Find all file versions. Similar to {.find_files}, except this returns any file versions
-      #
-      # (see .find_files)
+      # @param (see .find_files)
+      # @return [Hash, Array<FileVersion>] Hash on iterator info or list of files when no block is passed
+      # @see .find_files
       def find_file_versions(bucket:, count:, start_at: nil, batch_size: 1000, prefix: nil, delimiter: nil)
         files = []
 
@@ -109,12 +114,15 @@ module Backblaze::B2
       end
 
       ##
-      # Find all versions of a specific file
+      # Find all versions of a specific file.
+      #
+      # Refer to {.find_files} for more information on how to use the block parameters
       #
       # @param bucket (see .find_files)
       # @param file_name Name of the file to search for
       # @param count Max number of results returned. Since we looking at one file here, this defaults to call. Refer to
       #   {.find_files} for what that means
+      # @return (see .find_file_versions)
       def find_versions_of_file(bucket:, file_name:, count: :all)
         files = []
 

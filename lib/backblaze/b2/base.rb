@@ -36,7 +36,7 @@ module Backblaze::B2
       # @option options :start_at First place to start at
       # @yield Returns each object that should be processed
       # @yieldparam [Hash] item Each item returned by the api
-      # @return
+      # @return [Hash] Last iterator and total number or results returned
       def api_list(account, method_name, *args, **options, &block)
         count = options.delete(:count)
         batch_size = options.delete(:batch_size) { 1_000 }
@@ -48,15 +48,19 @@ module Backblaze::B2
           raise ArgumentError, "count must be positive"
         end
 
+        last_iter = nil
+
         account.with_persistent_connection do
           while total < count && last_count > 0
             batch_count = [batch_size, count - total].min
 
             data = account.api.public_send(method_name, *args, **options)
             data_key = data[:iter][:key]
+            total += data[data_key].length
+            last_iter = data[:iter]
 
             data[data_key].each(&block)
-            total += data[data_key].length
+
 
             if data[:iter][:stop]
               break
@@ -66,7 +70,8 @@ module Backblaze::B2
           end
         end
 
-        total
+        last_iter[:total] = total
+        last_iter
       end
     end
 

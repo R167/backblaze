@@ -4,6 +4,7 @@ module Backblaze::B2
   class Account
     extend Forwardable
 
+    # @return [Api] Get the api for this account
     attr_reader :api
 
     ##
@@ -24,12 +25,14 @@ module Backblaze::B2
       @api.authorize_account
     end
 
-    ##
-    # (see Api#with_persistent_connection)
-    def with_persistent_connection(&block)
-      api.with_persistent_connection(&block)
-    end
+    # @!macro [attach] delegate_api_method
+    #   @!method $2
+    #     (see Backblaze::B2::Api#$2)
+    def_delegator :api, :min_part_size
+    def_delegator :api, :recommended_part_size
+    def_delegator :api, :with_persistent_connection
 
+    # @return (see Bucket.all)
     def buckets
       Bucket.all(self)
     end

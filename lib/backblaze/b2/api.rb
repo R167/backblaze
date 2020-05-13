@@ -25,7 +25,9 @@ module Backblaze::B2
 
     VALID_DOWNLOAD_DURATION = (1..604800).freeze
 
-    attr_reader :api_url, :download_url, :account_id, :min_part_size, :recommended_part_size
+    attr_reader :api_url, :download_url, :account_id
+    # @return [Integer] Byte size of upload part
+    attr_reader :min_part_size, :recommended_part_size
 
     ##
     # Helper for accessing B2 API operations. This keeps track of minimal state, persisting the account_id and credentials

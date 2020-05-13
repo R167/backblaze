@@ -12,6 +12,8 @@ module Backblaze::B2
   # be handled "magically"
   class Upload
 
+    Config = Struct.new()
+
     MODES = %i(auto one_shot large_file).freeze
 
     DEFAULT_DELIMITER = '/'
@@ -20,26 +22,21 @@ module Backblaze::B2
       part_size: nil,
     }.freeze
 
-    attr_accessor :bucket, :object, :file_name, :prefix, :mode, :threads, :async, :auto_retry, :delimiter
+    attr_accessor :bucket, :object, :file_name, :prefix, :mode, :async, :auto_retry, :delimiter
     attr_reader :large_file_opts, :on_success, :on_failure, :file_info
 
     ##
     # Create a managed upload for this file
-    # @param [Bucket] bucket Bucket to upload this file to
-    # @param [#read, String] object IO object/File/String to upload
-    # @param [String] file_name Name of the file. This will be prefixed by `prefix`, and joined using `delimiter` if specified
-    # @param [:auto, :one_shot, :large_file] mode How the file will be uploaded. By default, follow Backblaze's recommendation
-    #   from recommendedPartSize. The file must be at least 5MB to upload as a large file. Refer to {LargeFile}
     def initialize(bucket: nil, object: nil, file_name: nil, prefix: nil, mode: :auto, async: false, auto_retry: nil, large_file_opts: {}, file_info: {})
       @bucket = bucket
       @object = object
       @mode = mode
-      @threads = threads
       @async = async
       @auto_retry = auto_retry
       @delimiter = DEFAULT_DELIMITER
       @large_file_opts = LARGE_FILE_OPTIONS.merge(large_file_opts)
       @file_info = file_info
+      @locked = false
     end
 
     def background_upload!
@@ -49,15 +46,11 @@ module Backblaze::B2
     end
 
     def upload!
-      check_locked!
-      @locked = true
-      self.freeze
+      finalize!
 
-      if async
-        Thread.new { upload_file }
-      else
-        upload_file
-      end
+      full_name = full_file_name
+      file = file_object
+      if file.size > large
     end
 
     ##
@@ -94,62 +87,6 @@ module Backblaze::B2
       !!(file_name && !file_name.empty? && object && MODES.include?(mode))
     end
 
-    class LargeFile
-
-    end
-
-    class OneShotFile
-      include UploadPart
-
-      attr_reader :config
-
-      ##
-      # @param [Upload] config The frozen upload object which has all config params
-      def initialize(config)
-        @config = config
-      end
-
-      def upload_url
-        config.bucket.upload_url
-      end
-
-      def upload
-
-      end
-    end
-
-    module UploadPart
-      B2_PREFIX = "X-Bz-Info-"
-
-      ##
-      # @return [HTTP::Response]
-      # @raise [ApiError] on failed upload
-      def upload_part(file:, auth:, url:, headers: {}, b2_headers: {})
-        b2_headers = b2_headers.merge({"Content-SHA1" => file_digest(file)})
-        b2_headers.transform_keys! { |key| "#{B2_PREFIX}#{key}" }
-        headers = headers.merge(b2_headers, { content_length: file.size })
-
-        response = HTTP[**headers].auth(auth).post(url, body: file)
-        if file.respond_to?(:unlink)
-          file.unlink
-        end
-        file.close
-
-        if response.status.success?
-          response
-        else
-          raise api_error(response)
-        end
-      end
-
-      ##
-      # Get the SHA1 of the file
-      # @return [String] Hex sha1
-      def file_digest(file)
-        Digest::SHA1.file(file).hexdigest
-      end
-    end
-
     private
 
     def full_file_name
@@ -184,8 +121,14 @@ module Backblaze::B2
       end
     end
 
-    def upload_file
+    def finalize!
+      check_locked!
+      @locked = true
 
+      part_size = large_file_opts[:part_size] || @bucket.account.recommended_part_size
+      large_file_opts[:part_size] = [bucket.account.min_part_size, part_size].max
+      # Now we're playing for keeps
+      self.freeze
     end
 
     ##
@@ -193,6 +136,46 @@ module Backblaze::B2
     # @raise [UploadInProgressError]
     def check_locked!
       raise UploadInProgressError, "Upload already in progress. Cannot modify" if @locked
+    end
+
+    class UploadFile
+      B2_PREFIX = "X-Bz-Info-"
+
+      def initialize(config)
+        @config = config
+      end
+
+      ##
+      # @return [HTTP::Response]
+      # @raise [ApiError] on failed upload
+      def upload_part(file:, auth:, url:, headers: {}, b2_headers: {})
+        b2_headers = b2_headers.merge({"Content-SHA1" => file_digest(file)})
+        b2_headers.transform_keys! { |key| "#{B2_PREFIX}#{key}" }
+        headers = headers.merge(b2_headers, { content_length: file.size })
+
+        response = HTTP[**headers].auth(auth).post(url, body: file)
+        if file.respond_to?(:unlink)
+          file.unlink
+        end
+        file.close
+
+        if response.status.success?
+          response
+        else
+          raise api_error(response)
+        end
+      end
+
+      ##
+      # Get the SHA1 of the file
+      # @return [String] Hex sha1
+      def file_digest(file)
+        Digest::SHA1.file(file).hexdigest
+      end
+    end
+
+    class LargeFile < UploadFile
+
     end
   end
 end
