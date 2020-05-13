@@ -21,12 +21,12 @@ module Backblaze::B2
         word.to_sym
       end
 
-      # protected
+      protected
 
       ##
-      # Provide a generic interface for getting a list of values from the api
-      # @param [Api] api
-      # @param [Symbol] method_name The name of the list function to call (invoked on `api`)
+      # Provide a generic interface for getting a list of values from the account
+      # @param [Account] account
+      # @param [Symbol] method_name The name of the list function to call (invoked on `account.api`)
       # @param [Array] args Args to splat into the list method
       # @param [Hash] options Options hash to forward to the api
       # @option options [Numeric, :all] :count Stop after fetching this many files. When passed a positive value,
@@ -37,7 +37,7 @@ module Backblaze::B2
       # @yield Returns each object that should be processed
       # @yieldparam [Hash] item Each item returned by the api
       # @return
-      def api_list(api, method_name, *args, **options, &block)
+      def api_list(account, method_name, *args, **options, &block)
         count = options.delete(:count)
         batch_size = options.delete(:batch_size) { 1_000 }
         total = 0
@@ -48,11 +48,11 @@ module Backblaze::B2
           raise ArgumentError, "count must be positive"
         end
 
-        api.with_persistent_connection do
+        account.with_persistent_connection do
           while total < count && last_count > 0
             batch_count = [batch_size, count - total].min
 
-            data = api.public_send(method_name, *args, **options)
+            data = account.api.public_send(method_name, *args, **options)
             data_key = data[:iter][:key]
 
             data[data_key].each(&block)

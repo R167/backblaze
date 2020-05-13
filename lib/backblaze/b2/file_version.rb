@@ -11,7 +11,7 @@ module Backblaze::B2
     alias_method :name, :file_name
     alias_method :id, :file_id
 
-    def initialize(api=nil, bucket: nil, attrs: {})
+    def initialize(account = nil, bucket: nil, attrs: {})
       if bucket.is_a?(Bucket)
         @bucket = bucket
       else
@@ -22,11 +22,11 @@ module Backblaze::B2
 
       end
 
-      super(api, attrs: attrs)
+      super(account, attrs: attrs)
     end
 
     def all_versions!
-
+      self.class.find_versions_of_file(bucket: bucket, file_name: file_name)
     end
 
     ##
@@ -55,7 +55,7 @@ module Backblaze::B2
       #   end
       #
       # @param [Bucket] bucket Bucket to list out the files in
-      # @param start_at First file to start searching for. Not usually to useful
+      # @param start_at First file to start searching for. Not usually too useful
       # @param [Numeric, :all] count Stop after fetching this many files. When passed a positive value, this is the case.
       #   If you want no limit on the results returned, use the special value `:all`. This will set count to infinity.
       # @param batch_size Number of results to fetch per api call. Defaults to the transaction max. If you are performing
@@ -71,12 +71,12 @@ module Backblaze::B2
       def find_files(bucket:, count:, start_at: nil, batch_size: 1000, prefix: nil, delimiter: nil)
         files = []
 
-        api_list(bucket.api, :list_file_names, bucket.id,
+        api_list(bucket.account, :list_file_names, bucket.id,
             start_at: {name: start_at},
             count: count,
             prefix: prefix,
             delimiter: delimiter) do |file|
-          f = new(bucket.api, bucket: bucket, attrs: file)
+          f = new(bucket.account, bucket: bucket, attrs: file)
           if block_given?
             yield f
           else
@@ -86,7 +86,55 @@ module Backblaze::B2
         files
       end
 
-    end
+      ##
+      # Find all file versions. Similar to {.find_files}, except this returns any file versions
+      #
+      # (see .find_files)
+      def find_file_versions(bucket:, count:, start_at: nil, batch_size: 1000, prefix: nil, delimiter: nil)
+        files = []
 
+        api_list(bucket.account, :list_file_versions, bucket.id,
+            start_at: start_at,
+            count: count,
+            prefix: prefix,
+            delimiter: delimiter) do |file|
+          f = new(bucket.account, bucket: bucket, attrs: file)
+          if block_given?
+            yield f
+          else
+            files << f
+          end
+        end
+        files
+      end
+
+      ##
+      # Find all versions of a specific file
+      #
+      # @param bucket (see .find_files)
+      # @param file_name Name of the file to search for
+      # @param count Max number of results returned. Since we looking at one file here, this defaults to call. Refer to
+      #   {.find_files} for what that means
+      def find_versions_of_file(bucket:, file_name:, count: :all)
+        files = []
+
+        api_list(bucket.account, :list_file_versions, bucket.id,
+            start_at: {name: file_name},
+            count: count,
+            prefix: file_name) do |file|
+          f = new(bucket.account, bucket: bucket, attrs: file)
+
+          if f.name == file_name
+            if block_given?
+              yield f
+            else
+              files << f
+            end
+          end
+        end
+        files
+      end
+
+    end
   end
 end

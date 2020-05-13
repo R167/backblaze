@@ -11,6 +11,8 @@ require 'backblaze/b2/resource'
 require 'backblaze/b2/bucket'
 require 'backblaze/b2/key'
 require 'backblaze/b2/file_version'
+require 'backblaze/b2/upload'
+require 'backblaze/b2/downloader'
 
 ##
 # Core module for accessing the B2 api.

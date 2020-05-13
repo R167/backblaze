@@ -12,11 +12,11 @@ module Backblaze::B2
 
     module ClassMethods
       def self.extended(klass)
-        klass.attr_accessor :api
+        # klass.attr_accessor :account
       end
 
-      def from_api(api, attributes)
-        new(api, attrs: attributes)
+      def from_api(account, attributes)
+        new(account, attrs: attributes)
       end
 
       private
@@ -45,8 +45,8 @@ module Backblaze::B2
 
     ##
     # Take a hash of options returned from B2 api and automatically set those attributes
-    def initialize(api=nil, attrs: {})
-      @api = api
+    def initialize(account = nil, attrs: {})
+      @account = account
       set_attributes!(attrs)
     end
 
@@ -58,16 +58,28 @@ module Backblaze::B2
       to_h(json = true).to_json
     end
 
-    ##
-    # @!attribute [rw] api
-    #   @return [Api]
-    def api=(api)
-      @api = api
+    # @return [Account]
+    attr_accessor :account
+
+    def account
+      @account or raise ValidationError, "Attribute never set: account="
     end
 
-    def api
-      @api or raise ValidationError, "Attribute never set: api="
+    ##
+    # Convert from the long format used by java and B2 to a ruby {Time}
+    def long_to_time(long)
+      return timestamp unless long.is_a?(Integer)
+      Time.at(0, long, :millisecond)
     end
+
+    ##
+    # Convert from a ruby {Time} to the long format used by java
+    def time_to_long(time)
+      return time unless time.is_a?(Time)
+      time.to_i * 1000 + time.usec / 1000
+    end
+
+    private
 
     def set_attributes!(attrs)
       lookup = self.class::ATTR_SETTER_LOOKUP

@@ -31,7 +31,7 @@ module Backblaze::B2
     end
 
     def buckets
-      Bucket.all(api)
+      Bucket.all(self)
     end
 
     private

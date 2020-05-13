@@ -13,6 +13,10 @@ module Backblaze::B2
   class ValidationError < Error; end
 
   ##
+  # Upload is already in progress. Cannot change
+  class UploadInProgressError < Error; end
+
+  ##
   # Errors encountered when calling the api
   # @see https://www.backblaze.com/b2/docs/calling.html#error_handling
   class ApiError < Error
