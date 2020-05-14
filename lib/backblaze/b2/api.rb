@@ -500,7 +500,7 @@ module Backblaze::B2
     # @!endgroup
 
     def raw_connection
-      
+
     end
 
     private
