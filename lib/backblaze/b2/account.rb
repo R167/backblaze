@@ -4,6 +4,8 @@ module Backblaze::B2
   class Account
     extend Forwardable
 
+    Options = Struct.new(:application_key_id, :application_key, :reauthorize)
+
     # @return [Api] Get the api for this account
     attr_reader :api
 

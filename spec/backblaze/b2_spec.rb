@@ -1,4 +1,4 @@
-require 'spec_helper'
+require "spec_helper"
 
 describe Backblaze::B2 do
 end

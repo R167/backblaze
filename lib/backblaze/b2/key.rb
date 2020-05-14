@@ -2,6 +2,5 @@
 
 module Backblaze::B2
   class Key
-
   end
 end

@@ -4,11 +4,11 @@ module Backblaze::B2
   class Bucket < Base
     include Resource
 
-    ATTRIBUTES = %w{accountId bucketId bucketInfo bucketName bucketType corsRules lifecycleRules options revision}.freeze
+    ATTRIBUTES = %w[accountId bucketId bucketInfo bucketName bucketType corsRules lifecycleRules options revision].freeze
     create_attributes ATTRIBUTES
 
-    alias_method :name, :bucket_name
-    alias_method :id, :bucket_id
+    alias name bucket_name
+    alias id bucket_id
 
     class << self
       ##
@@ -16,7 +16,7 @@ module Backblaze::B2
       # @param [Account] account Account to search for buckets in
       # @return [Array<Bucket>] all buckets in the account
       def all(account)
-        account.api.list_buckets['buckets'].map do |bucket|
+        account.api.list_buckets["buckets"].map do |bucket|
           Bucket.from_api(account, bucket)
         end
       end
@@ -44,7 +44,7 @@ module Backblaze::B2
         if obj.is_a?(Bucket)
           obj
         elsif obj.is_a?(Hash)
-          if obj.include?(:bucket_name) || obj.include?('bucketName')
+          if obj.include?(:bucket_name) || obj.include?("bucketName")
             Bucket.from_api(account, attrs: obj)
           elsif obj.include?(:name) && obj.include?(:id)
             Bucket.from_storage(account: account, **obj)
@@ -77,9 +77,9 @@ module Backblaze::B2
     def upload_url
       upload = account.api.get_upload_url
       {
-        auth: upload['authorizationToken'],
-        url: upload['uploadUrl'],
-        bucket_id: upload['bucketId']
+        auth: upload["authorizationToken"],
+        url: upload["uploadUrl"],
+        bucket_id: upload["bucketId"]
       }
     end
 
@@ -108,18 +108,18 @@ module Backblaze::B2
     def find_files(count:, start_at: nil, batch_size: 1000, prefix: nil, delimiter: nil)
       files = []
 
-      self.class.api_list(account, :list_file_names, self.id,
-          start_at: {name: start_at},
-          count: count,
-          prefix: prefix,
-          delimiter: delimiter) do |file|
+      self.class.api_list(account, :list_file_names, id,
+        start_at: {name: start_at},
+        count: count,
+        prefix: prefix,
+        delimiter: delimiter) do |file|
         f = FileVersion.new(account, bucket: self, attrs: file)
         if block_given?
           yield f
         else
           files << f
         end
-      end.tap{ |r| r.results = files unless block_given?}
+      end.tap { |r| r.results = files unless block_given? }
     end
 
     ##
@@ -133,17 +133,17 @@ module Backblaze::B2
       files = []
 
       self.class.api_list(bucket.account, :list_file_versions, bucket.id,
-          start_at: start_at,
-          count: count,
-          prefix: prefix,
-          delimiter: delimiter) do |file|
+        start_at: start_at,
+        count: count,
+        prefix: prefix,
+        delimiter: delimiter) do |file|
         f = FileVersion.new(bucket.account, bucket: bucket, attrs: file)
         if block_given?
           yield f
         else
           files << f
         end
-      end.tap{ |r| r.results = files unless block_given?}
+      end.tap { |r| r.results = files unless block_given? }
     end
 
     ##
@@ -151,8 +151,6 @@ module Backblaze::B2
     #
     # Refer to {#find_files} for more information on how to use the block parameters
     #
-    # @param bucket (see .find_files)
-    # @param file_name Name of the file to search for
     # @param count Max number of results returned. Since we looking at one file here, this defaults to call. Refer to
     #   {.find_files} for what that means
     # @return (see .find_file_versions)
@@ -160,9 +158,9 @@ module Backblaze::B2
       files = []
 
       self.class.api_list(bucket.account, :list_file_versions, bucket.id,
-          start_at: {name: file_name},
-          count: count,
-          prefix: file_name) do |file|
+        start_at: {name: file_name},
+        count: count,
+        prefix: file_name) do |file|
         f = FileVersion.new(bucket.account, bucket: bucket, attrs: file)
 
         if f.name == file_name
@@ -172,8 +170,7 @@ module Backblaze::B2
             files << f
           end
         end
-      end.tap{ |r| r.results = files unless block_given?}
+      end.tap { |r| r.results = files unless block_given? }
     end
-
   end
 end

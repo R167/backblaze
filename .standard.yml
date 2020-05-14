@@ -1,0 +1,7 @@
+# I really just have issues with the automatic "semantic blocks"
+
+format: progress
+
+ignore:
+  - '**/*':
+    - Standard/SemanticBlocks

@@ -5,7 +5,6 @@ module Backblaze::B2
   # Base class with helpers for B2 classes
   # @abstract
   class Base
-
     ##
     # Result of a "list" call
     # @!attribute [rw] start_at
@@ -76,7 +75,6 @@ module Backblaze::B2
 
             data[data_key].each(&block)
 
-
             if data[:iter][:stop]
               break
             else
@@ -88,6 +86,5 @@ module Backblaze::B2
         ListResult.new(last_iter[:start_at], total, last_iter[:stop], nil)
       end
     end
-
   end
 end

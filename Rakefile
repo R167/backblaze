@@ -1,12 +1,13 @@
 require "bundler/gem_tasks"
 require "rspec/core/rake_task"
-require "dotenv/load"
+require "standard/rake"
+require "dotenv/tasks"
 
 RSpec::Core::RakeTask.new(:spec)
 
-task :default => :spec
+task default: :spec
 
-task :console do
+task console: :dotenv do
   require "backblaze"
   require "irb"
 

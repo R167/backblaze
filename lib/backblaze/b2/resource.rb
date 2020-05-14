@@ -36,11 +36,11 @@ module Backblaze::B2
           setter_lookup[v] = :"@#{v}"
         end
 
-        self.attr_reader(*sym_to_str.keys)
+        attr_reader(*sym_to_str.keys)
 
-        self.const_set(:ATTR_STR_TO_SYM, str_to_sym.freeze)
-        self.const_set(:ATTR_SYM_TO_STR, sym_to_str.freeze)
-        self.const_set(:ATTR_SETTER_LOOKUP, setter_lookup.freeze)
+        const_set(:ATTR_STR_TO_SYM, str_to_sym.freeze)
+        const_set(:ATTR_SYM_TO_STR, sym_to_str.freeze)
+        const_set(:ATTR_SETTER_LOOKUP, setter_lookup.freeze)
       end
     end
 
@@ -52,18 +52,18 @@ module Backblaze::B2
     end
 
     def to_h(json = false)
-      self.class::ATTR_SETTER_LOOKUP.select{|k, v| k.is_a?(json ? String : Symbol)}.map{|k,v| [k, self.instance_variable_get(v)]}.to_h
+      self.class::ATTR_SETTER_LOOKUP.select { |k, v| k.is_a?(json ? String : Symbol) }.map { |k, v| [k, instance_variable_get(v)] }.to_h
     end
 
     def to_json
-      to_h(json = true).to_json
+      to_h(true).to_json
     end
 
-    # @return [Account]
-    attr_accessor :account
+    # @param [Account]
+    attr_writer :account
 
     def account
-      @account or raise ValidationError, "Attribute never set: account="
+      @account || raise(ValidationError, "Attribute never set: account=")
     end
 
     ##

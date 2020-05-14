@@ -4,14 +4,14 @@ module Backblaze::B2
   class FileVersion < Base
     include Resource
 
-    ATTRIBUTES = %w(accountId action bucketId contentLength contentSha1 contentType fileId fileInfo fileName uploadTimestamp)
-    CONFIG = %i(content_type file_info file_name)
+    ATTRIBUTES = %w[accountId action bucketId contentLength contentSha1 contentType fileId fileInfo fileName uploadTimestamp]
+    CONFIG = %i[content_type file_info file_name]
 
     create_attributes ATTRIBUTES
 
-    alias_method :name, :file_name
-    alias_method :id, :file_id
-    alias_method :size, :content_length
+    alias name file_name
+    alias id file_id
+    alias size content_length
 
     def initialize(account = nil, bucket: nil, attrs: {})
       if bucket.is_a?(Bucket)
@@ -29,21 +29,19 @@ module Backblaze::B2
 
     # @return [Array<FileVersion>] List of all ovrsions of this file
     def all_versions!
-      self.class.find_versions_of_file(bucket: bucket, file_name: file_name)
+      bucket.find_versions_of_file(file_name: file_name).results
     end
 
     ##
     # Call B2 to get the latest version of this file if one exists
-    # @return [FileVersion, nil] The latest version of the file, or nil if none
+    # @return [FileVersion, nil] the latest version of the file, or nil if none
     def latest!
-      result = self.class.find_files(bucket: bucket, count: 1, prefix: name, start_at: name).first
+      result = bucket.find_files(count: 1, prefix: name, start_at: name).results.first
       result if result && result.name == name
     end
 
     # @return [Bucket] The file's bucket
-    def bucket
-      @bucket
-    end
+    attr_reader :bucket
 
     class << self
     end

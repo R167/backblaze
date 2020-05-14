@@ -1,18 +1,18 @@
 # frozen_string_literal: true
 
-require 'tempfile'
-require 'forwardable'
+require "tempfile"
+require "forwardable"
 
-require 'backblaze/b2/api'
-require 'backblaze/b2/account'
-require 'backblaze/b2/base'
-require 'backblaze/b2/exceptions'
-require 'backblaze/b2/resource'
-require 'backblaze/b2/bucket'
-require 'backblaze/b2/key'
-require 'backblaze/b2/file_version'
-require 'backblaze/b2/upload'
-require 'backblaze/b2/downloader'
+require "backblaze/b2/api"
+require "backblaze/b2/account"
+require "backblaze/b2/base"
+require "backblaze/b2/exceptions"
+require "backblaze/b2/resource"
+require "backblaze/b2/bucket"
+require "backblaze/b2/key"
+require "backblaze/b2/file_version"
+require "backblaze/b2/upload"
+require "backblaze/b2/downloader"
 
 ##
 # Core module for accessing the B2 api.
@@ -27,8 +27,8 @@ require 'backblaze/b2/downloader'
 #
 # @example (see .config)
 module Backblaze::B2
-  ENV_KEY_ID = 'BACKBLAZE_B2_API_KEY_ID'
-  ENV_KEY_SECRET = 'BACKBLAZE_B2_API_KEY'
+  ENV_KEY_ID = "BACKBLAZE_B2_API_KEY_ID"
+  ENV_KEY_SECRET = "BACKBLAZE_B2_API_KEY"
 
   class << self
     extend Forwardable
@@ -53,7 +53,7 @@ module Backblaze::B2
     # @return [void]
     def config
       # Create the options object and
-      @config ||= AccountOptions.new
+      @config ||= Account::Options.new
       @config.application_key_id ||= ENV[ENV_KEY_ID]
       @config.application_key ||= ENV[ENV_KEY_SECRET]
 
@@ -64,11 +64,7 @@ module Backblaze::B2
       end
     end
 
-    ##
-    # Trigger automatic config for the default account
-    def login!
-      config unless @config
-    end
+    alias login! config
 
     ##
     # Resets config and default account back to being unset
@@ -89,14 +85,11 @@ module Backblaze::B2
 
     private
 
-    AccountOptions = Struct.new(:application_key_id, :application_key, :reauthorize)
-
     def create_account
       raise ValidationError, "You must config or login! before trying to access default_account." unless @config
 
       # We need to splat them...
       Account.new(**@config.to_h)
     end
-
   end
 end

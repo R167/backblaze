@@ -3,17 +3,17 @@ module Helpers
     files = []
     size.times do
       files << {
-        'action' => 'upload',
-        'fileId' => SecureRandom.uuid.tr('-', '_'),
-        'fileName' => "random_file_#{rand(0..10000)}.txt",
-        'size' => rand(10..1000),
-        'uploadTimestamp' => Time.now.to_i
+        "action" => "upload",
+        "fileId" => SecureRandom.uuid.tr("-", "_"),
+        "fileName" => "random_file_#{rand(0..10000)}.txt",
+        "size" => rand(10..1000),
+        "uploadTimestamp" => Time.now.to_i
       }
     end
 
     {
-      'files' => files,
-      'nextFileName' => next_item
+      "files" => files,
+      "nextFileName" => next_item
     }
   end
 end

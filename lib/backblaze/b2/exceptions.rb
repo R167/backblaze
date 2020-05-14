@@ -1,10 +1,10 @@
 # frozen_string_literal: true
 
-require 'multi_json'
+require "multi_json"
 
 module Backblaze::B2
   ##
-  # Generice B2 exception that all others inherit from
+  # Generic B2 exception that all others inherit from
   # @abstract
   class Error < StandardError; end
 
@@ -22,7 +22,7 @@ module Backblaze::B2
   class ApiError < Error
     attr_reader :status, :code, :retry_after
 
-    def initialize(msg="", code='__unspecified', status=-1, retry_after=nil)
+    def initialize(msg = "", code = "__unspecified", status = -1, retry_after = nil)
       @status = status
       @code = code
       @retry_after = (!!retry_after ? retry_after.to_i : retry_after)
@@ -35,7 +35,7 @@ module Backblaze::B2
     end
 
     def inspect
-      "#<#{self.class.name}:#{' retry' if has_retry?} code=#{code} status=#{status}: #{message}>"
+      "#<#{self.class.name}:#{" retry" if has_retry?} code=#{code} status=#{status}: #{message}>"
     end
   end
 
@@ -50,42 +50,42 @@ module Backblaze::B2
   RetryLater = Class.new(ApiError)
   ServerError = Class.new(ApiError)
   UnsupportedException = Class.new(ApiError)
-  UsageExceededExcpetion = Class.new(ApiError)
+  UsageExceededException = Class.new(ApiError)
 
   ##
   # Mapping of Backblaze error codes to native exceptions
   # @note This list is not meant to be comprehensive, only to map the most common cases
   EXCEPTION_MAP = {
-    'bad_auth_token' => AuthTokenException,
-    'bad_request' => BadRequestException,
-    'cap_exceeded' => UsageExceededExcpetion,
-    'download_cap_exceeded' => UsageExceededExcpetion,
-    'conflict' => BucketRevisionException,
-    'duplicate_bucket_name' => BadRequestException,
-    'expired_auth_token' => AuthTokenException,
-    'not_found' => NotFoundException,
-    'range_not_satisfiable' => BadRequestException,
-    'service_unavailable' => AuthTokenException,
-    'too_many_buckets' => BadRequestException,
-    'transaction_cap_exceeded' => UsageExceededExcpetion,
-    'unauthorized' => NotAuthorizedException,
-    'unsuported' => UnsupportedException,
+    "bad_auth_token" => AuthTokenException,
+    "bad_request" => BadRequestException,
+    "cap_exceeded" => UsageExceededException,
+    "download_cap_exceeded" => UsageExceededException,
+    "conflict" => BucketRevisionException,
+    "duplicate_bucket_name" => BadRequestException,
+    "expired_auth_token" => AuthTokenException,
+    "not_found" => NotFoundException,
+    "range_not_satisfiable" => BadRequestException,
+    "service_unavailable" => AuthTokenException,
+    "too_many_buckets" => BadRequestException,
+    "transaction_cap_exceeded" => UsageExceededException,
+    "unauthorized" => NotAuthorizedException,
+    "unsuported" => UnsupportedException,
 
     400 => BadRequestException,
     401 => NotAuthorizedException,
-    403 => UsageExceededExcpetion,
+    403 => UsageExceededException,
     408 => RequestTimeoutException,
     429 => RetryLater,
     500 => ServerError,
     503 => RetryLater,
-    508 => ServerError,
+    508 => ServerError
   }.freeze
 
   # @!endgroup
 
   ##
   # Parse the error response message and create the correct exception type based on the code
-  # @param [HTTP::Response] response reponse object to parse
+  # @param [HTTP::Response] response response object to parse
   # @api private
   # @!visibility private
   def self.api_error(response)
@@ -95,19 +95,17 @@ module Backblaze::B2
     begin
       data = MultiJson.load(body)
       # We want a key error if the data is bad
-      code = data.fetch('code')
-      message = data.fetch('message')
+      code = data.fetch("code")
+      message = data.fetch("message")
     rescue MultiJson::ParseError, KeyError
-      code = 'mangled_response'
+      code = "mangled_response"
       message = "Could not parse bad response from server: #{body}"
     end
 
-    find_excpetion_class(code, status).new(message, code, status, retry_after)
+    find_exception_class(code, status).new(message, code, status, retry_after)
   end
 
-  private
-
-  def self.find_excpetion_class(code, status)
+  def self.find_exception_class(code, status)
     if EXCEPTION_MAP.include?(code)
       EXCEPTION_MAP[code]
     elsif EXCEPTION_MAP.include?(status)
@@ -116,4 +114,5 @@ module Backblaze::B2
       ApiError
     end
   end
+  private_class_method :find_exception_class
 end
