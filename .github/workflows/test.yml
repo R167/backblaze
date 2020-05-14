@@ -1,14 +1,6 @@
 name: Run tests
 on: [push, pull_request]
 jobs:
-  style:
-    name: Standard RB style check
-    runs-on: ubuntu-latest
-    steps:
-      - name: standardrb
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        uses: amoeba/standardrb-action@v3
   rspec:
     name: rspec-${{ matrix.ruby }}
     runs-on: ubuntu-latest
