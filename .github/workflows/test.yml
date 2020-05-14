@@ -1,7 +1,5 @@
 name: Run tests
-on:
-  push: []
-  pull_request: ["master"]
+on: [push, pull_request]
 jobs:
   style:
     name: Standard RB style check
