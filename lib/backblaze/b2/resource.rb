@@ -7,7 +7,6 @@ module Backblaze::B2
 
     def self.included(klass)
       klass.extend(ClassMethods)
-      klass.private_class_method :new
     end
 
     module ClassMethods

@@ -21,7 +21,7 @@ require 'backblaze/b2/downloader'
 # has most of the methods you need delegated to it. If you find yourself needing a full {Account} object, just access
 # it through `Backblaze::B2.default_account`. The default account is automatically created from credentials found in
 # the environment variables `BACKBLAZE_B2_API_KEY_ID` and `BACKBLAZE_B2_API_KEY`. By design, you cannot use the default
-# account until you have either explictly provisioned it by calling {.login!} or configured it with {.config}
+# account until you have either explicitly provisioned it by calling {.login!} or configured it with {.config}
 #
 # Following the Rails pattern of initializers, you can call {.config} and set attributes on the yielded object.
 #
@@ -37,7 +37,7 @@ module Backblaze::B2
     # Default {Account} instance
     # @return [Account] the default account
     def default_account
-      @account ||= create_account
+      @default_account ||= create_account
     end
 
     ##
@@ -52,7 +52,7 @@ module Backblaze::B2
     #   end
     # @return [void]
     def config
-      # Create the options obeject and
+      # Create the options object and
       @config ||= AccountOptions.new
       @config.application_key_id ||= ENV[ENV_KEY_ID]
       @config.application_key ||= ENV[ENV_KEY_SECRET]
@@ -92,12 +92,10 @@ module Backblaze::B2
     AccountOptions = Struct.new(:application_key_id, :application_key, :reauthorize)
 
     def create_account
-      if @config
-        # We need to splat them...
-        Account.new(**@config.to_h)
-      else
-        raise ValidationError, "You must config or login! before trying to access default_account."
-      end
+      raise ValidationError, "You must config or login! before trying to access default_account." unless @config
+
+      # We need to splat them...
+      Account.new(**@config.to_h)
     end
 
   end

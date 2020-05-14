@@ -5,3 +5,4 @@ gemspec
 
 gem "rspec", "~> 3.9.0"
 gem "webmock"
+gem "standard"

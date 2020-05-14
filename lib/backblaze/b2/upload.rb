@@ -3,6 +3,7 @@
 require 'tempfile'
 require 'stringio'
 require 'digest'
+require 'multi_json'
 
 module Backblaze::B2
   ##
@@ -12,7 +13,7 @@ module Backblaze::B2
   # be handled "magically"
   class Upload
 
-    Config = Struct.new()
+    Config = Struct.new(:tmp)
 
     MODES = %i(auto one_shot large_file).freeze
 
@@ -22,12 +23,14 @@ module Backblaze::B2
       part_size: nil,
     }.freeze
 
-    attr_accessor :bucket, :object, :file_name, :prefix, :mode, :async, :auto_retry, :delimiter
+    # @return [Bucket]
+    attr_accessor :bucket
+    attr_accessor :object, :file_name, :prefix, :mode, :async, :auto_retry, :delimiter, :content_type
     attr_reader :large_file_opts, :on_success, :on_failure, :file_info
 
     ##
     # Create a managed upload for this file
-    def initialize(bucket: nil, object: nil, file_name: nil, prefix: nil, mode: :auto, async: false, auto_retry: nil, large_file_opts: {}, file_info: {})
+    def initialize(bucket: nil, object: nil, file_name: nil, content_type: 'b2/x-auto', prefix: nil, mode: :auto, async: false, auto_retry: nil, large_file_opts: {}, file_info: {})
       @bucket = bucket
       @object = object
       @mode = mode
@@ -37,6 +40,7 @@ module Backblaze::B2
       @large_file_opts = LARGE_FILE_OPTIONS.merge(large_file_opts)
       @file_info = file_info
       @locked = false
+      @content_type
     end
 
     def background_upload!
@@ -48,9 +52,17 @@ module Backblaze::B2
     def upload!
       finalize!
 
-      full_name = full_file_name
-      file = file_object
-      if file.size > large
+      file = file_object.binmode
+
+      if (file.size > large_file_opts[:min_part_size] && mode == :large_file) ||
+         (file.size > large_file_opts.recommended_part_size && mode == :auto)
+
+        upload = LargeFile.new(config)
+      else
+        upload = UploadFile.new(config)
+      end
+
+      upload.upload(file)
     end
 
     ##
@@ -87,8 +99,7 @@ module Backblaze::B2
       !!(file_name && !file_name.empty? && object && MODES.include?(mode))
     end
 
-    private
-
+    # @return [String] the full file name
     def full_file_name
       if prefix
         "#{prefix}#{delimiter}#{file_name}"
@@ -96,6 +107,8 @@ module Backblaze::B2
         file_name
       end
     end
+
+    private
 
     ##
     # Get a "file like" object
@@ -140,18 +153,52 @@ module Backblaze::B2
 
     class UploadFile
       B2_PREFIX = "X-Bz-Info-"
+      # 64 kB
+      BLOCK_SIZE = 64 * 1024
 
+      ##
+      # @param [Upload] config
       def initialize(config)
         @config = config
       end
 
       ##
+      # @param [File, Tempfile] file
+      def upload(file)
+        upload_auth = config.bucket.upload_url
+
+        headers = {
+          'X-Bz-File-Name' => config.full_file_name,
+          content_type: config.content_type,
+        }
+
+        b2_headers = config.file_info.merge({})
+
+        response = upload_part(file, file.size, auth: upload_auth[:auth], url: upload_auth[:url], headers: headers, b2_headers: b2_headers)
+
+        FileVersion.new(config.bucket.account, bucket: config.bucket, attrs: response).tap do |f|
+          config.on_success&.call(f)
+        end
+      rescue => e
+        config.on_failure&.call(e)
+        raise
+      end
+
+      protected
+
+      # @return [Upload]
+      def config
+        @config
+      end
+
+      ##
       # @return [HTTP::Response]
       # @raise [ApiError] on failed upload
-      def upload_part(file:, auth:, url:, headers: {}, b2_headers: {})
-        b2_headers = b2_headers.merge({"Content-SHA1" => file_digest(file)})
+      def upload_part(file, size, auth:, url:, headers: {}, b2_headers: {})
         b2_headers.transform_keys! { |key| "#{B2_PREFIX}#{key}" }
-        headers = headers.merge(b2_headers, { content_length: file.size })
+        headers = headers.merge(b2_headers, {
+            content_length: size, user_agent: Api::USER_AGENT, "X-Bz-Content-Sha1" => file_digest(file, size)
+          })
 
         response = HTTP[**headers].auth(auth).post(url, body: file)
         if file.respond_to?(:unlink)
@@ -160,22 +207,40 @@ module Backblaze::B2
         file.close
 
         if response.status.success?
-          response
+          MultiJson.load(response.body.to_s)
         else
           raise api_error(response)
         end
       end
 
       ##
-      # Get the SHA1 of the file
-      # @return [String] Hex sha1
-      def file_digest(file)
-        Digest::SHA1.file(file).hexdigest
+      # Compute the SHA1 of the file. Properly handles starting at an offset and only reading `size` bytes
+      # @param [File] file file to digest (at an offset)
+      # @param [Integer] size number of bytes to digest
+      # @return [String] Hex sha1 hexdigest
+      def file_digest(file, size)
+        return_pos = file.pos
+        buffer = String.new(capacity: CHUNK_SIZE)
+        digest = Digest::SHA1.new
+
+        bytes_read = 0
+
+        while bytes_read < size
+          # Make sure we don't read more than we're supposed to
+          read_bytes = [CHUNK_SIZE, size - bytes_read].min
+          digest << file.sysread(read_bytes, buffer)
+          bytes_read += buffer.length
+        end
+
+        file.sysseek(return_pos)
+        digest.hexdigest
       end
     end
 
     class LargeFile < UploadFile
+      def upload
 
+      end
     end
   end
 end

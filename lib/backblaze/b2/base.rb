@@ -6,6 +6,22 @@ module Backblaze::B2
   # @abstract
   class Base
 
+    ##
+    # Result of a "list" call
+    # @!attribute [rw] start_at
+    #   Where to start the next iteration
+    # @!attribute [rw] count
+    #   @return [Integer] number of results returned
+    # @!attribute [rw] stop
+    #   @return [Boolean] if the listing reached the end of all listable results
+    # @!attribute [rw] results
+    #   @return [Array, nil] optional results list
+    # @!parse
+    #   alias_method :to_a, :results
+    ListResult = Struct.new(:start_at, :count, :stop, :results) do
+      alias_method :to_a, :results
+    end
+
     class << self
       ##
       # Helper method for symbolizing a key from "camelCase" to :snake_case
@@ -21,8 +37,6 @@ module Backblaze::B2
         word.to_sym
       end
 
-      protected
-
       ##
       # Provide a generic interface for getting a list of values from the account
       # @param [Account] account
@@ -36,7 +50,7 @@ module Backblaze::B2
       # @option options :start_at First place to start at
       # @yield Returns each object that should be processed
       # @yieldparam [Hash] item Each item returned by the api
-      # @return [Hash] Last iterator and total number or results returned
+      # @return [ListResult] Last iterator and total number or results returned
       def api_list(account, method_name, *args, **options, &block)
         count = options.delete(:count)
         batch_size = options.delete(:batch_size) { 1_000 }
@@ -54,6 +68,7 @@ module Backblaze::B2
           while total < count && last_count > 0
             batch_count = [batch_size, count - total].min
 
+            options[:count] = batch_count
             data = account.api.public_send(method_name, *args, **options)
             data_key = data[:iter][:key]
             total += data[data_key].length
@@ -70,8 +85,7 @@ module Backblaze::B2
           end
         end
 
-        last_iter[:total] = total
-        last_iter
+        ListResult.new(last_iter[:start_at], total, last_iter[:stop], nil)
       end
     end
 

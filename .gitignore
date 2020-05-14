@@ -10,3 +10,5 @@
 .DS_Store
 .b2_login*
 .env*
+.rakeTasks
+.idea
