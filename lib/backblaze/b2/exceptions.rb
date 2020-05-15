@@ -71,26 +71,27 @@ module Backblaze::B2
     "unauthorized" => NotAuthorizedException,
     "unsuported" => UnsupportedException,
 
-    400 => BadRequestException,
-    401 => NotAuthorizedException,
-    403 => UsageExceededException,
-    408 => RequestTimeoutException,
-    429 => RetryLater,
-    500 => ServerError,
-    503 => RetryLater,
-    508 => ServerError
+    "400" => BadRequestException,
+    "401" => NotAuthorizedException,
+    "403" => UsageExceededException,
+    "408" => RequestTimeoutException,
+    "429" => RetryLater,
+    "500" => ServerError,
+    "503" => RetryLater,
+    "508" => ServerError
   }.freeze
 
   # @!endgroup
 
   ##
   # Parse the error response message and create the correct exception type based on the code
-  # @param [HTTP::Response] response response object to parse
+  # @param [Net::HTTPResponse] response response object to parse
+  # @raise [ApiError] some subclass of {ApiError} based on the error message
   # @api private
   # @!visibility private
   def self.api_error(response)
     status = response.code
-    retry_after = response[:retry_after]
+    retry_after = response["Retry-After"]
     body = response.body.to_s
     begin
       data = MultiJson.load(body)
@@ -102,7 +103,7 @@ module Backblaze::B2
       message = "Could not parse bad response from server: #{body}"
     end
 
-    find_exception_class(code, status).new(message, code, status, retry_after)
+    find_exception_class(code, status).new(message, code, status.to_i, retry_after)
   end
 
   def self.find_exception_class(code, status)

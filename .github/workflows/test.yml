@@ -2,12 +2,17 @@ name: Run tests
 on: [push, pull_request]
 jobs:
   rspec:
-    name: rspec-${{ matrix.ruby }}
-    runs-on: ubuntu-latest
+    name: rspec ruby-${{ matrix.ruby }} (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
+        os: [ ubuntu-latest ]
         ruby: [ 2.4, 2.5, 2.6, 2.7 ]
+        include: # define single matrix case that performs upload
+          - os: ubuntu-latest
+            ruby: 2.7
+            upload: "true"
     steps:
       - name: checkout
         uses: actions/checkout@v2
@@ -23,11 +28,22 @@ jobs:
       - uses: actions/cache@v1
         with:
           path: vendor/bundle
-          key: bundle-use-ruby-ubuntu-latest-${{ matrix.ruby }}-${{ hashFiles('**/Gemfile.lock') }}
+          key: bundle-use-ruby-${{ matrix.os }}-${{ matrix.ruby }}-${{ hashFiles('**/Gemfile.lock') }}
           restore-keys: |
-            bundle-use-ruby-ubuntu-latest-${{ matrix.ruby }}-
+            bundle-use-ruby-${{ matrix.os }}-${{ matrix.ruby }}-
+            bundle-use-ruby-${{ matrix.os }}-
       - name: install dependencies
-        run:  bundle install --jobs 3 --retry 3
+        run: |
+          bundle install --jobs 3 --retry 3
+          bundle clean
       # Okay, back to what we really care about...
       - name: spec
         run:  bundle exec rake spec
+#      - name: Test & publish code coverage
+#        if: matrix.os ==
+#        uses: paambaati/codeclimate-action@v2.6.0
+#        env:
+#          CC_TEST_REPORTER_ID: ${{ secrets.CC_TEST_REPORTER_ID }}
+#        with:
+#          coverageCommand: npm run coverage
+

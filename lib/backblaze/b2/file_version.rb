@@ -27,7 +27,7 @@ module Backblaze::B2
       super(account, attrs: attrs)
     end
 
-    # @return [Array<FileVersion>] List of all ovrsions of this file
+    # @return [Array<FileVersion>] list of all versions of this file
     def all_versions!
       bucket.find_versions_of_file(file_name: file_name).results
     end

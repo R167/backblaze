@@ -14,6 +14,7 @@ end
 group :test do
   gem "rspec", "~> 3.9.0"
   gem "webmock", "~> 3.8.0"
+  gem "simplecov", "~> 0.17.0"
 end
 
 group :doc do

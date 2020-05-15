@@ -1,29 +1,36 @@
 # frozen_string_literal: true
 
 require "http"
-require "multi_json"
+require "uri"
+require "net/http"
+require "net/http/persistent"
 
 require "backblaze/version"
 require "backblaze/b2/exceptions"
+require "backblaze/b2/util"
 
 module Backblaze::B2
   ##
   # Minimal wrapper around the B2 API to handle basic things like connections,
   # urls, etc.
+  #
+  # @todo Measures should be taken to ensure this class is threadsafe
   class Api
+    include Util
+
     API_VERSION = "v2"
     AUTH_ENDPOINT = "https://api.backblazeb2.com/b2api/#{API_VERSION}/b2_authorize_account"
 
-    # User agent for all requests in this gem. This follows backblaze's user agent recommendations
-    # listed on their [integration checklist](https://www.backblaze.com/b2/docs/integration_checklist.html)
-    USER_AGENT = "backblaze-rb/#{Backblaze::VERSION}+#{RUBY_ENGINE}/#{RUBY_VERSION}"
+    # One day in seconds. Duration tokens are valid for
+    ONE_DAY = 24 * 60 * 60
 
     KEY_CAPABILITIES = %w[listKeys writeKeys deleteKeys].freeze
     BUCKET_CAPABILITIES = %w[listBuckets writeBuckets deleteBuckets].freeze
     FILE_CAPABILITIES = %w[listFiles readFiles shareFiles writeFiles deleteFiles].freeze
     CAPABILITIES = (KEY_CAPABILITIES + BUCKET_CAPABILITIES + FILE_CAPABILITIES).freeze
 
-    VALID_DOWNLOAD_DURATION = (1..604800).freeze
+    # Valid download duration authorization is between one second and one week
+    VALID_DOWNLOAD_DURATION = (1..(7 * ONE_DAY)).freeze
 
     attr_reader :api_url, :download_url, :account_id
     # @return [Integer] Byte size of upload part
@@ -34,52 +41,27 @@ module Backblaze::B2
     # for reauthorization.
     # @param application_key_id Application Key ID for authenticating with Backblaze
     # @param application_key Application Key for authenticating with Backblaze
-    def initialize(application_key_id, application_key)
+    # @param [Boolean] login login on object creation
+    def initialize(application_key_id, application_key, login: true)
       @app_key_id = application_key_id
-      @connection_key = :"b2_connection_#{object_id}"
       @app_key_secret = application_key
-      @auth_token = nil
+      # Ruby 2.4 compatibility
+      @mutex = defined?(Mutex) ? Mutex.new : Thread::Mutex.new
+      @connection = create_connection_pool
+      @pid = Process.pid
+      login! if login
     end
 
-    ##
-    # Perform all nested HTTP api requests over the same connection using HTTP Keep-Alive
-    #
-    # When making several calls in a row, normally each one needs to create a completely new connection, i.e.
-    # TCP connection, TLS handshake, etc. We can easily optimize this by taking advantage of HTTP/1.1 Keep-Alive
-    # by default. By reusing the connection, subsequent calls to the same endpoint only need to be set up once.
-    # Nested calls to this function still use the same connection. All connections are thread local and automatically
-    # closed when the last block exits. Connections are created lazily on the first api invocation.
-    #
-    # @example Nested calls
-    #   account = ...
-    #   account.with_persistent_connection do
-    #     account.with_persistent_connection do
-    #       b = account.api.list_buckets # This request creates the connection
-    #       account.api.list_file_names(b['buckets'][0]['bucketId']) # reuses the previous connection
-    #     end
-    #     account.api.list_keys # Still uses the same connection from above
-    #   end # Connection closed
-    #
-    #   account.api.list_keys # Creates an entirely new HTTP connection
-    #
-    # Make sure you don't do any `fork`ing, etc. inside this call because **Bad Things** will happen.
-    #
-    # @yield Perform all api connections in the block over the same connection
-    # @return last value in the block
-    # @note This only applies to `apiUrl` post requests. Authorize, upload, and download access different hostnames
-    #   and will **not** reuse this connection.
-    def with_persistent_connection
-      if connection_info[:count] == 0
-        connection_info[:conn] = connection.persistent(api_url)
-      end
-      connection_info[:count] += 1
-      yield
-    ensure
-      connection_info[:count] -= 1
-      # Close the connection if we are the last one.
-      if connection_info[:count] <= 0
-        connection_info[:conn].close
-      end
+    def login!
+      connection.override_headers["User-Agent"] = Backblaze::USER_AGENT
+      connection.headers["Accept"] = "application/json"
+      connection.idle_timeout = 5
+      authorize!
+    end
+
+    def logout!
+      connection&.shutdown
+      connection.headers.clear
     end
 
     ##
@@ -87,7 +69,7 @@ module Backblaze::B2
     # @param refresh force a reauthorization of credentials
     # @return an auth_token
     def auth_token(refresh = false)
-      authorize_account if refresh || !@auth_token
+      authorize! if refresh || !@auth_token
       @auth_token
     end
 
@@ -99,10 +81,20 @@ module Backblaze::B2
     # @return [Hash] account attributes
     # @see https://www.backblaze.com/b2/docs/b2_authorize_account.html
     def authorize_account
-      response = HTTP[user_agent: USER_AGENT].basic_auth(user: @app_key_id, pass: @app_key_secret).follow.get(AUTH_ENDPOINT)
+      response = get_basic_auth(AUTH_ENDPOINT, @app_key_id, @app_key_secret)
 
-      if response.status.success?
-        data = parse_json(response)
+      if response.code == "200"
+        parse_json(response)
+      else
+        api_error(response)
+      end
+    end
+
+    ##
+    # Authorize the account and set attributes. Thread safe.
+    def authorize!
+      @mutex.synchronize do
+        data = authorize_account
         @download_url = data["downloadUrl"]
         @api_url = data["apiUrl"]
         @auth_token = data["authorizationToken"]
@@ -110,13 +102,9 @@ module Backblaze::B2
         @min_part_size = data["absoluteMinimumPartSize"]
         @recommended_part_size = data["recommendedPartSize"]
 
-        data
-      else
-        # TODO: Error handling
-        raise ApiError.new(response)
+        @connection.headers["Authorization"] = @auth_token
       end
     end
-    alias reauthorize! authorize_account
 
     # @!endgroup
     # @!group B2 API operations
@@ -499,42 +487,44 @@ module Backblaze::B2
 
     # @!endgroup
 
-    def raw_connection
-
-    end
-
     private
 
-    ##
-    # Generate the api url for the given endpoint. This takes into account if we
-    # need the fully qualified url, or just the path (i.e. are we using a persistent connection)
-    # @param endpoint b2 api action
-    # @return url to pass to connection
-    def build_api_url(endpoint)
-      if keep_alive?
-        "/b2api/#{API_VERSION}/#{endpoint}"
-      else
-        "#{api_url}/b2api/#{API_VERSION}/#{endpoint}"
+    # @return [Net::HTTP::Persistent] connection pool
+    def connection
+      @mutex.synchronize do
+        if @pid != Process.pid
+          # We forked the process. Just create another
+          @connection = create_connection_pool
+          @pid = Process.pid
+        end
       end
+
+      @connection
     end
 
-    ##
-    # Create an HTTP connection for post requests
-    def connection
-      if keep_alive?
-        connection_info[:conn]
-      else
-        HTTP[accept: "application/json", user_agent: USER_AGENT].auth(auth_token)
-      end
+    def create_connection_pool
+      Net::HTTP::Persistent.new(name: "#{self.class.name}-#{object_id}")
+    end
+
+    # @param endpoint b2 api action
+    # @return [URI::Generic] new URI for the given endpoint
+    # @see https://www.backblaze.com/b2/docs/calling.html
+    def build_api_uri(endpoint)
+      URI.parse("#{api_url}/b2api/#{API_VERSION}/#{endpoint}")
     end
 
     ##
     # Make a post request to the api endpoint.
     def post_api(endpoint, body = {})
       body = dump_json(body) unless body.is_a?(String)
-      path = build_api_url(endpoint)
-      response = connection.post(path, body: body)
-      if response.status.success?
+      uri = build_api_uri(endpoint)
+
+      req = Net::HTTP::Post.new(uri)
+      req.body = body
+
+      response = connection.request(uri, req)
+
+      if response.code == "200"
         parse_json(response)
       else
         # we got an error
@@ -542,49 +532,6 @@ module Backblaze::B2
         # Potentially do some error handling here.
         raise err
       end
-    end
-
-    def connection_info
-      Thread.current[@connection_key] ||= {count: 0, conn: nil}
-    end
-
-    # (see Backblaze::B2.api_error)
-    def api_error(response)
-      Backblaze::B2.api_error(response)
-    end
-
-    ##
-    # Whether or not we are currently nested inside a persistent conneciton
-    def keep_alive?
-      connection_info[:count] > 0
-    end
-
-    ##
-    # Parse the body as JSON
-    def parse_json(body, symbolize = false)
-      MultiJson.load(body.to_s, symbolize_keys: symbolize)
-    end
-
-    def dump_json(data)
-      MultiJson.dump(data)
-    end
-
-    def construct_range(range)
-      range_param = nil
-      if range
-        if range.is_a?(Range)
-          range_param = +"bytes="
-          # Make range start at begin or 0 (if negative/unbounded)
-          range_param << [(range.begin || 0), 0].max.to_s
-          range_param << "-"
-          # if we for some reason got an endless range...
-          range_param << (range.end && range.exclude_end? ? range.end - 1 : range.end).to_s
-        else
-          range_param = range.to_s
-        end
-      end
-
-      range_param
     end
   end
 end
