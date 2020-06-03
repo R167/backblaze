@@ -1,18 +1,32 @@
-name: Run tests
-on: [push, pull_request]
+# Test runner copied from R167/backblaze
+name: CI
+on:
+  push:
+    branches:
+      - master
+      - complete-rewrite
+    tags:
+      - v*
+  pull_request:
+env:
+  BUNDLE_CLEAN: "true"
+  BUNDLE_PATH: vendor/bundle
+  BUNDLE_JOBS: 3
+  BUNDLE_RETRY: 3
 jobs:
-  rspec:
-    name: rspec ruby-${{ matrix.ruby }} (${{ matrix.os }})
+  specs:
+    name: ${{ matrix.job }} ruby-${{ matrix.ruby }} (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         os: [ ubuntu-latest ]
-        ruby: [ 2.4, 2.5, 2.6, 2.7 ]
-        include: # define single matrix case that performs upload
+        ruby: [ 2.5, 2.6, 2.7 ]
+        job: [ rspec ]
+        include:
           - os: ubuntu-latest
             ruby: 2.7
-            upload: "true"
+            job: standardrb
     steps:
       - name: checkout
         uses: actions/checkout@v2
@@ -20,30 +34,19 @@ jobs:
         uses: ruby/setup-ruby@v1
         with:
           ruby-version: ${{ matrix.ruby }}
-      # Caching makes life better
-      - name: build lockfile
-        run: |
-          bundle config path vendor/bundle
-          bundle lock
-      - uses: actions/cache@v1
+      - name: bundler gem cache
+        uses: actions/cache@v1
         with:
-          path: vendor/bundle
+          path: ${{ env.BUNDLE_PATH }}
           key: bundle-use-ruby-${{ matrix.os }}-${{ matrix.ruby }}-${{ hashFiles('**/Gemfile.lock') }}
           restore-keys: |
             bundle-use-ruby-${{ matrix.os }}-${{ matrix.ruby }}-
             bundle-use-ruby-${{ matrix.os }}-
       - name: install dependencies
-        run: |
-          bundle install --jobs 3 --retry 3
-          bundle clean
-      # Okay, back to what we really care about...
-      - name: spec
+        run:  bundle update --group runtime # This updates all runtime dependencies
+      - name: specs
+        if:   matrix.job == 'rspec'
         run:  bundle exec rake spec
-#      - name: Test & publish code coverage
-#        if: matrix.os ==
-#        uses: paambaati/codeclimate-action@v2.6.0
-#        env:
-#          CC_TEST_REPORTER_ID: ${{ secrets.CC_TEST_REPORTER_ID }}
-#        with:
-#          coverageCommand: npm run coverage
-
+      - name: standardrb (linter)
+        if:   matrix.job == 'standardrb'
+        run:  bundle exec rake standard

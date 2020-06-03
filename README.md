@@ -1,6 +1,6 @@
 # Backblaze
 
-![RSpec tests](https://github.com/R167/backblaze/workflows/Run%20tests/badge.svg)
+![RSpec tests](https://github.com/R167/backblaze/workflows/CI/badge.svg)
 [![Ruby Style Guide](https://img.shields.io/badge/code_style-standard-brightgreen.svg)](https://github.com/testdouble/standard)
 [![Gem Version](https://badge.fury.io/rb/backblaze.svg)](https://badge.fury.io/rb/backblaze)
 

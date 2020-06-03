@@ -1,14 +1,14 @@
 /.bundle/
 /.yardoc
-/Gemfile.lock
 /_yardoc/
 /coverage/
 /doc/
 /pkg/
 /spec/reports/
 /tmp/
+
 .DS_Store
-.b2_login*
 .env*
 .rakeTasks
 .idea
+.rspec_status
