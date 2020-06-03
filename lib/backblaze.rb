@@ -1,6 +1,9 @@
 # frozen_string_literal: true
 
 module Backblaze
+  def self.b2_account
+    B2.default_account
+  end
 end
 
 require "backblaze/version"

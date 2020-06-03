@@ -1,14 +1,17 @@
 # frozen_string_literal: true
 
+require "set"
+
 module Backblaze::B2
   class Bucket < Base
-    include Resource
+    NAME_KEY = "bucketName"
+    ID_KEY = "bucketId"
 
-    ATTRIBUTES = %w[accountId bucketId bucketInfo bucketName bucketType corsRules lifecycleRules options revision].freeze
-    create_attributes ATTRIBUTES
+    ATTRIBUTES = Set.new(%w[bucketId bucketName bucketInfo bucketType corsRules lifecycleRules revision options]).freeze
 
-    alias name bucket_name
-    alias id bucket_id
+    def initialize(account, properties = {})
+      super
+    end
 
     class << self
       ##
@@ -17,65 +20,60 @@ module Backblaze::B2
       # @return [Array<Bucket>] all buckets in the account
       def all(account)
         account.api.list_buckets["buckets"].map do |bucket|
-          Bucket.from_api(account, bucket)
-        end
-      end
-
-      ##
-      # Create a minimal version of a bucket comprised of the name and id.
-      #
-      # Some operations in the B2 api require just the bucket_id while others require the name. It is best practice
-      # to make sure you always instantiate new objects with at least these two fields (when you've been keeping them
-      # in storage, e.g. saved in redis), otherwise you may end up with **way** more api requets than you expect your
-      # application should be making.
-      # @return [Bucket]
-      def from_storage(name:, id:, account: nil)
-        Bucket.new(account, attrs: {bucket_name: name, bucket_id: id})
-      end
-
-      ##
-      # Try a variety of techniques to coerce an object into a bucket
-      #
-      # @param [Bucket, Hash, String<:bucket_id>] obj
-      # @param [Account] account acount this bucket is associated with
-      # @return [Bucket]
-      # @raise [KeyError] when the object is a Hash, but doesn't have the proper keys
-      def coerce(obj, account = nil)
-        if obj.is_a?(Bucket)
-          obj
-        elsif obj.is_a?(Hash)
-          if obj.include?(:bucket_name) || obj.include?("bucketName")
-            Bucket.from_api(account, attrs: obj)
-          elsif obj.include?(:name) && obj.include?(:id)
-            Bucket.from_storage(account: account, **obj)
-          else
-            raise KeyError, "Hash must have name/id keys"
-          end
-        else
-          new(account, attrs: {bucket_id: bucket})
+          Bucket.new(account, bucket)
         end
       end
     end
 
+    def refresh!
+      properties = account.without_fetch { account.api.list_buckets(bucket_id: id, bucket_name: name)["buckets"].first }
+      set_properties(properties)
+    end
+
+    def name
+      self["bucketName"]
+    end
+    alias bucket_name name
+
+    def id
+      self["bucketId"]
+    end
+    alias bucket_id id
+
+    def type
+      self["bucketType"]
+    end
+    alias bucket_type type
+
+    def info
+      self["bucketInfo"]
+    end
+    alias bucket_info info
+
+    def cors_rules
+      self["corsRules"]
+    end
+
+    def lifecycle_rules
+      self["lifecycleRules"]
+    end
+
+    def valid_attributes
+      ATTRIBUTES
+    end
+
     ##
-    # Search the bucket for all visible files
-    #
-    # Warning: This will make a lot of API calls. Be careful about calling it. It is generally better to use the methods
-    # such as {FileVersion.find_files} and {FileVersion.find_file_versions} as these give you more fine-grained control
-    # over what and how much data you are fetching.
-    # @param count (see FileVersion.find_files)
-    # @yield Each file in the bucket
-    # @yieldparam [FileVersion] file the current file
-    # @return [Hash] information about the last iteration
-    def all_files!(count: :all, &block)
-      FileVersion.find_files(bucket: self, count: count, &block)
+    # Check if two buckets refer to the same Backblaze object
+    # @return [Boolean] if buckets refer to same object
+    def ==(other)
+      other.class == self.class && id == other.id && name == other.name
     end
 
     ##
     # Get an upload url and authorization
     # @return [Hash] :auth, :url, and :bucket_id
     def upload_url
-      upload = account.api.get_upload_url
+      upload = account.api.get_upload_url(id)
       {
         auth: upload["authorizationToken"],
         url: upload["uploadUrl"],
@@ -96,8 +94,8 @@ module Backblaze::B2
     #   end
     #
     # @param start_at first file to start searching for, esp. for resuming a search.
-    # @param [Integer, :all] count Stop after fetching this many files. When passed a positive value, this is the case.
-    #   If you want no limit on the results returned, use the special value `:all`. This will set count to infinity.
+    # @param [Integer, :all, :none] limit stop after fetching this many files. When passed a positive value, this is the case.
+    #   If you want no limit on the results returned, use the special value `:all` or `:none`. This will set limit to infinity.
     # @param batch_size Number of results to fetch per api call. Defaults to the transaction max. If you are performing
     #   work where you need files fetched very quickly, consider reducing.
     # @param prefix Only files with this prefix in the bucket will be returned
@@ -105,14 +103,15 @@ module Backblaze::B2
     # @yield OPTIONAL: When included, used to process each file
     # @yieldparam [FileVersion] file Each found file
     # @return [ListResult<FileVersion>, ListResult] List of all the files found within our bounds
-    def find_files(count:, start_at: nil, batch_size: 1000, prefix: nil, delimiter: nil)
+    def find_files(limit:, start_at: nil, batch_size: 1000, prefix: nil, delimiter: nil)
       files = []
 
-      self.class.api_list(account, :list_file_names, id,
+      account.api.list_generic(:list_file_names, id,
         start_at: {name: start_at},
-        count: count,
+        count: limit,
         prefix: prefix,
-        delimiter: delimiter) do |file|
+        delimiter: delimiter,
+        batch_size: batch_size) do |file|
         f = FileVersion.new(account, bucket: self, attrs: file)
         if block_given?
           yield f
@@ -129,15 +128,16 @@ module Backblaze::B2
     # @yieldparam (see #fine_files)
     # @see #find_files
     # @see https://www.backblaze.com/b2/docs/file_versions.html B2 File Versions
-    def find_file_versions(bucket:, count:, start_at: nil, batch_size: 1000, prefix: nil, delimiter: nil)
+    def find_file_versions(limit:, start_at: nil, batch_size: 1000, prefix: nil, delimiter: nil)
       files = []
 
-      self.class.api_list(bucket.account, :list_file_versions, bucket.id,
+      account.api.list_generic(:list_file_versions, id,
         start_at: start_at,
-        count: count,
+        count: limit,
         prefix: prefix,
-        delimiter: delimiter) do |file|
-        f = FileVersion.new(bucket.account, bucket: bucket, attrs: file)
+        delimiter: delimiter,
+        batch_size: batch_size) do |file|
+        f = FileVersion.new(account, bucket: self, attrs: file)
         if block_given?
           yield f
         else
@@ -151,17 +151,17 @@ module Backblaze::B2
     #
     # Refer to {#find_files} for more information on how to use the block parameters
     #
-    # @param count Max number of results returned. Since we looking at one file here, this defaults to call. Refer to
+    # @param limit Max number of results returned. Since we looking at one file here, this defaults to call. Refer to
     #   {.find_files} for what that means
     # @return (see .find_file_versions)
-    def find_versions_of_file(file_name:, count: :all)
+    def find_versions_of_file(file_name:, limit: :all)
       files = []
 
-      self.class.api_list(bucket.account, :list_file_versions, bucket.id,
+      account.api.list_generic(:list_file_versions, id,
         start_at: {name: file_name},
-        count: count,
+        count: limit,
         prefix: file_name) do |file|
-        f = FileVersion.new(bucket.account, bucket: bucket, attrs: file)
+        f = FileVersion.new(account, bucket: self, attrs: file)
 
         if f.name == file_name
           if block_given?

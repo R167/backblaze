@@ -20,10 +20,6 @@ module Backblaze::B2
 
       protected
 
-      def attributes_to_symbols(attrs)
-        Hash[attrs.map { |attr| [attr.freeze, symbolize_key(attr)] }]
-      end
-
       ##
       # Create these attributes on the class
       def create_attributes(attrs)
@@ -64,20 +60,6 @@ module Backblaze::B2
 
     def account
       @account || raise(ValidationError, "Attribute never set: account=")
-    end
-
-    ##
-    # Convert from the long format used by java and B2 to a ruby {Time}
-    def long_to_time(long)
-      return timestamp unless long.is_a?(Integer)
-      Time.at(0, long, :millisecond)
-    end
-
-    ##
-    # Convert from a ruby {Time} to the long format used by java
-    def time_to_long(time)
-      return time unless time.is_a?(Time)
-      time.to_i * 1000 + time.usec / 1000
     end
 
     private

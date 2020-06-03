@@ -30,25 +30,18 @@ describe Backblaze::B2::Api do
     end
 
     it "maintains the same connection" do
-      expect(connection).to eql(connection)
+      # Purposefully use equal? for object identity
+      expect(connection).to equal(connection)
     end
 
     it "creates a new connection on fork" do
-      r, w = IO.pipe
       conn = connection
-      fork do
-        r.close
-        w.write(connection.object_id.to_s)
-        w.close
-        exit!(0)
+      id = eval_in_fork do
+        connection.object_id
       end
 
-      w.close
-      id = r.read.to_i
-      r.close
-
       expect(conn.object_id).not_to eq id
-      expect(conn).to eql(connection)
+      expect(conn).to equal(connection)
     end
   end
 end

@@ -1,13 +1,13 @@
 # frozen_string_literal: true
 
-require "http"
 require "uri"
 require "net/http"
 require "net/http/persistent"
 
+# Specifically require these files so that `require "backblaze/b2/api"` is standalone
 require "backblaze/version"
 require "backblaze/b2/exceptions"
-require "backblaze/b2/util"
+require "backblaze/b2/utils"
 
 module Backblaze::B2
   ##
@@ -16,7 +16,7 @@ module Backblaze::B2
   #
   # @todo Measures should be taken to ensure this class is threadsafe
   class Api
-    include Util
+    include Utils
 
     API_VERSION = "v2"
     AUTH_ENDPOINT = "https://api.backblazeb2.com/b2api/#{API_VERSION}/b2_authorize_account"
@@ -33,6 +33,8 @@ module Backblaze::B2
     VALID_DOWNLOAD_DURATION = (1..(7 * ONE_DAY)).freeze
 
     attr_reader :api_url, :download_url, :account_id
+    # Bucket specific attributes set when this Api Key has limited scope
+    attr_reader :bucket_id, :bucket_name
     # @return [Integer] Byte size of upload part
     attr_reader :min_part_size, :recommended_part_size
 
@@ -45,8 +47,7 @@ module Backblaze::B2
     def initialize(application_key_id, application_key, login: true)
       @app_key_id = application_key_id
       @app_key_secret = application_key
-      # Ruby 2.4 compatibility
-      @mutex = defined?(Mutex) ? Mutex.new : Thread::Mutex.new
+      @mutex = Mutex.new
       @connection = create_connection_pool
       @pid = Process.pid
       login! if login
@@ -80,8 +81,8 @@ module Backblaze::B2
     # and a URL that should be used as the base URL for subsequent API calls.
     # @return [Hash] account attributes
     # @see https://www.backblaze.com/b2/docs/b2_authorize_account.html
-    def authorize_account
-      response = get_basic_auth(AUTH_ENDPOINT, @app_key_id, @app_key_secret)
+    def authorize_account(timeout: 5)
+      response = get_basic_auth(AUTH_ENDPOINT, @app_key_id, @app_key_secret, timeout: timeout)
 
       if response.code == "200"
         parse_json(response)
@@ -115,7 +116,8 @@ module Backblaze::B2
     # @return info about canceled file
     # @see https://www.backblaze.com/b2/docs/b2_cancel_large_file.html
     def cancel_large_file(file_id)
-      post_api("b2_cancel_large_file", fileId: file_id)
+      request_params = {"fileId" => file_id}
+      post_api("b2_cancel_large_file", request_params)
     end
 
     ##
@@ -135,21 +137,21 @@ module Backblaze::B2
     # @see https://www.backblaze.com/b2/docs/b2_copy_file.html
     def copy_file(source_id, dest_name, bucket_id: nil, range: nil, content_type: nil, file_info: nil)
       replace = !content_type.nil?
-      request_attributes = {
-        sourceFileId: source_id,
-        fileName: dest_name,
-        destinationBucketId: bucket_id,
-        range: construct_range(range),
-        metadataDirective: "COPY"
+      request_params = {
+        "sourceFileId" => source_id,
+        "fileName" => dest_name,
+        "destinationBucketId" => bucket_id,
+        "range" => construct_range(range),
+        "metadataDirective" => "COPY"
       }
       if replace
-        request_attributes.merge!({
-          contentType: content_type,
-          fileInfo: file_info,
-          metadataDirective: "REPLACE"
+        request_params.merge!({
+          "contentType" => content_type,
+          "fileInfo" => file_info,
+          "metadataDirective" => "REPLACE"
         })
       end
-      post_api("b2_copy_file", request_attributes)
+      post_api("b2_copy_file", request_params)
     end
 
     ##
@@ -161,13 +163,13 @@ module Backblaze::B2
     # @param range: (see #copy_file)
     # @see https://www.backblaze.com/b2/docs/b2_copy_part.html
     def copy_part(source_id, dest_id, part_number, range: nil)
-      request_attributes = {
-        sourceFileId: source_id,
-        largeFileId: dest_id,
-        partNumber: part_number,
-        range: construct_range(range)
+      request_params = {
+        "sourceFileId" => source_id,
+        "largeFileId" => dest_id,
+        "partNumber" => part_number,
+        "range" => construct_range(range)
       }
-      post_api("b2_copy_part", request_attributes)
+      post_api("b2_copy_part", request_params)
     end
 
     ##
@@ -183,15 +185,15 @@ module Backblaze::B2
     # @see https://www.backblaze.com/b2/docs/cors_rules.html CORS Rules
     # @see https://www.backblaze.com/b2/docs/b2_create_bucket.html
     def create_bucket(name, visibility: "allPrivate", info: {}, cors: [], lifecycle: [])
-      request_attributes = {
-        accountId: account_id,
-        bucketName: name,
-        bucketType: visibility,
-        bucketInfo: info,
-        corsRules: cors,
-        lifecycleRules: lifecycle
+      request_params = {
+        "accountId" => account_id,
+        "bucketName" => name,
+        "bucketType" => visibility,
+        "bucketInfo" => info,
+        "corsRules" => cors,
+        "lifecycleRules" => lifecycle
       }
-      post_api("b2_create_bucket", request_attributes)
+      post_api("b2_create_bucket", request_params)
     end
 
     ##
@@ -206,15 +208,15 @@ module Backblaze::B2
     # @return Attributes of a new key
     # @see https://www.backblaze.com/b2/docs/b2_create_key.html
     def create_key(name, capabilities, expires_in: nil, bucket_id: nil, prefix: nil)
-      request_attributes = {
-        accountId: account_id,
-        keyName: name,
-        capabilities: capabilities,
-        validDurationInSeconds: expires_in.to_i,
-        bucketId: bucket_id,
-        namePrefix: prefix
+      request_params = {
+        "accountId" => account_id,
+        "keyName" => name,
+        "capabilities" => capabilities,
+        "validDurationInSeconds" => expires_in.to_i,
+        "bucketId" => bucket_id,
+        "namePrefix" => prefix
       }
-      post_api("b2_create_key", request_attributes)
+      post_api("b2_create_key", request_params)
     end
 
     ##
@@ -222,7 +224,8 @@ module Backblaze::B2
     # @param bucket_id bucket to delete
     # @see https://www.backblaze.com/b2/docs/b2_delete_bucket.html
     def delete_bucket(bucket_id)
-      post_api("b2_delete_bucket", accountId: account_id, bucketId: bucket_id)
+      request_params = {"accountId" => account_id, "bucketId" => bucket_id}
+      post_api("b2_delete_bucket", request_params)
     end
 
     ##
@@ -231,7 +234,8 @@ module Backblaze::B2
     # @param file_id version of this file to delete
     # @see https://www.backblaze.com/b2/docs/b2_delete_file_version.html
     def delete_file_version(name, file_id)
-      post_api("b2_delete_file_version", fileName: name, fileId: file_id)
+      request_params = {"fileName" => name, "fileId" => file_id}
+      post_api("b2_delete_file_version", request_params)
     end
 
     ##
@@ -239,7 +243,8 @@ module Backblaze::B2
     # @param key_id id of the application key to delete
     # @see https://www.backblaze.com/b2/docs/b2_delete_key.html
     def delete_key(key_id)
-      post_api("b2_delete_key", applicationKeyId: key_id)
+      request_params = {"applicationKeyId" => key_id}
+      post_api("b2_delete_key", request_params)
     end
 
     ##
@@ -249,7 +254,8 @@ module Backblaze::B2
     # @return large file info
     # @see https://www.backblaze.com/b2/docs/b2_finish_large_file.html
     def finish_large_file(file_id, sha1_array)
-      post_api("b2_finish_large_file", fileId: file_id, partSha1Array: sha1_array)
+      request_params = {"fileId" => file_id, "partSha1Array" => sha1_array}
+      post_api("b2_finish_large_file", request_params)
     end
 
     ##
@@ -266,12 +272,12 @@ module Backblaze::B2
     # @param b2_headers header fields that are forced on download
     # @see https://www.backblaze.com/b2/docs/b2_get_download_authorization.html
     def get_download_authorization(bucket_id, prefix:, expires_in:, b2_headers: {}, **kwargs)
-      request_attributes = {
-        bucketId: bucket_id,
-        fileNamePrefix: prefix,
-        validDurationInSeconds: expires_in.clamp(VALID_DOWNLOAD_DURATION)
+      request_params = {
+        "bucketId" => bucket_id,
+        "fileNamePrefix" => prefix,
+        "validDurationInSeconds" => expires_in.clamp(VALID_DOWNLOAD_DURATION)
       }.merge(b2_headers, kwargs)
-      post_api("b2_get_download_authorization", request_attributes)
+      post_api("b2_get_download_authorization", request_params)
     end
 
     ##
@@ -279,7 +285,8 @@ module Backblaze::B2
     # @param file_id to get info about
     # @see https://www.backblaze.com/b2/docs/b2_get_file_info.html
     def get_file_info(file_id)
-      post_api("b2_get_file_info", fileId: file_id)
+      request_params = {"fileId" => file_id}
+      post_api("b2_get_file_info", request_params)
     end
 
     ##
@@ -287,7 +294,8 @@ module Backblaze::B2
     # @param file_id The ID of the large file whose parts you want to upload
     # @see https://www.backblaze.com/b2/docs/b2_get_upload_part_url.html
     def get_upload_part_url(file_id)
-      post_api("b2_get_upload_part_url", fileId: file_id)
+      request_params = {"fileId" => file_id}
+      post_api("b2_get_upload_part_url", request_params)
     end
 
     ##
@@ -296,7 +304,8 @@ module Backblaze::B2
     # @return an uploadUrl and authorizationToken for uploading
     # @see https://www.backblaze.com/b2/docs/b2_get_upload_url.html
     def get_upload_url(bucket_id)
-      post_api("b2_get_upload_url", bucketId: bucket_id)
+      request_params = {"bucketId" => bucket_id}
+      post_api("b2_get_upload_url", request_params)
     end
 
     ##
@@ -306,7 +315,8 @@ module Backblaze::B2
     # @param file_name name of the file to mark as hidden
     # @see https://www.backblaze.com/b2/docs/b2_hide_file.html
     def hide_file(bucket_id, file_name)
-      post_api("b2_hide_file", bucketId: bucket_id, fileName: file_name)
+      request_params = {"bucketId" => bucket_id, "fileName" => file_name}
+      post_api("b2_hide_file", request_params)
     end
 
     ##
@@ -320,9 +330,13 @@ module Backblaze::B2
     #   Default is to list all.
     # @see https://www.backblaze.com/b2/docs/b2_list_buckets.html
     def list_buckets(bucket_id: nil, bucket_name: nil, types: nil)
-      post_api("b2_list_buckets", accountId: account_id, bucketId: bucket_id, bucketName: bucket_name, bucketTypes: types).tap do |data|
-        data[:iter] = {key: "buckets", start_at: nil}
-      end
+      request_params = {
+        "accountId" => account_id,
+        "bucketId" => bucket_id,
+        "bucketName" => bucket_name,
+        "bucketTypes" => types
+      }
+      post_api("b2_list_buckets", request_params)
     end
 
     ##
@@ -338,7 +352,7 @@ module Backblaze::B2
     #   last_file = ''
     #   while !last_file.nil?
     #     data = api.list_file_names(my_bucket, start_at: last_file, count: MAX_FILES)
-    #     last_file = data[:iter][:start_at]
+    #     last_file = data[:_cursor][:start_at]
     #     data['files'].each do |file|
     #       puts file['fileName']
     #     end
@@ -353,19 +367,19 @@ module Backblaze::B2
     #   a separate billable Class C transaction
     # @param prefix Files returned will be limited to those with the given prefix. Defaults to empty string, which matches all files.
     # @param delimiter Files returned will be limited to those within the top folder, or any one subfolder, split on this char.
-    # @return Hash `{'files' => [...{file info}...], 'nextFileName' => next_file_name, iter: {iteration-data}}`
+    # @return Hash `{'files' => [...{file info}...], 'nextFileName' => next_file_name, _cursor: {iteration-data}}`
     # @see https://www.backblaze.com/b2/docs/b2_list_file_names.html
     def list_file_names(bucket_id, start_at: {name: nil}, count: 0, prefix: "", delimiter: nil)
       start_name = start_at.is_a?(Hash) ? start_at[:name] : start_at
-      request_attributes = {
-        bucketId: bucket_id,
-        startFileName: start_name,
-        maxFileCount: count,
-        prefix: prefix,
-        delimiter: delimiter
+      request_params = {
+        "bucketId" => bucket_id,
+        "startFileName" => start_name,
+        "maxFileCount" => count,
+        "prefix" => prefix,
+        "delimiter" => delimiter
       }
-      post_api("b2_list_file_names", request_attributes).tap do |data|
-        data[:iter] = {key: "files", start_at: {name: data["nextFileName"]}, stop: data["nextFileName"].nil?}
+      post_api("b2_list_file_names", request_params).tap do |data|
+        data[:_cursor] = {key: "files", start_at: {name: data["nextFileName"]}, stop: data["nextFileName"].nil?}
       end
     end
 
@@ -379,17 +393,17 @@ module Backblaze::B2
     def list_file_versions(bucket_id, start_at: {id: nil, name: nil}, count: nil, prefix: "", delimiter: nil)
       start_name = start_at[:name]
       start_id = start_at[:id]
-      request_attributes = {
-        bucketId: bucket_id,
-        startFileName: start_name,
-        startFileId: start_id,
-        maxFileCount: count,
-        prefix: prefix,
-        delimiter: delimiter
+      request_params = {
+        "bucketId" => bucket_id,
+        "startFileName" => start_name,
+        "startFileId" => start_id,
+        "maxFileCount" => count,
+        "prefix" => prefix,
+        "delimiter" => delimiter
       }
-      post_api("b2_list_file_versions", request_attributes).tap do |data|
+      post_api("b2_list_file_versions", request_params).tap do |data|
         stop = data["nextFileName"].nil? && data["nextFileId"].nil?
-        data[:iter] = {key: "files", start_at: {name: data["nextFileName"], id: data["nextFileId"]}, stop: stop}
+        data[:_cursor] = {key: "files", start_at: {name: data["nextFileName"], id: data["nextFileId"]}, stop: stop}
       end
     end
 
@@ -400,8 +414,13 @@ module Backblaze::B2
     # @return Hash of `keys` and `nextApplicationKeyId` (for iterating)
     # @see https://www.backblaze.com/b2/docs/b2_list_keys.html
     def list_keys(start_at: nil, count: nil)
-      post_api("b2_list_keys", accountId: account_id, maxKeyCount: count, startApplicationKeyId: start_at).tap do |data|
-        data[:iter] = {key: "keys", start_at: data["nextApplicationKeyId"], stop: data["nextApplicationKeyId"].nil?}
+      request_params = {
+        "accountId" => account_id,
+        "maxKeyCount" => count,
+        "startApplicationKeyId" => start_at
+      }
+      post_api("b2_list_keys", request_params).tap do |data|
+        data[:_cursor] = {key: "keys", start_at: data["nextApplicationKeyId"], stop: data["nextApplicationKeyId"].nil?}
       end
     end
 
@@ -413,8 +432,13 @@ module Backblaze::B2
     # @return Hash with `parts` Array and `nextPartNumber` to start at.
     # @see https://www.backblaze.com/b2/docs/b2_list_parts.html
     def list_parts(file_id, start_at: nil, count: nil)
-      post_api("b2_list_parts", accountId: account_id, maxPartCount: count, startPartNumber: start_at).tap do |data|
-        data[:iter] = {key: "parts", start_at: data["nextPartNumber"], stop: data["nextPartNumber"].nil?}
+      request_params = {
+        "accountId" => account_id,
+        "maxPartCount" => count,
+        "startPartNumber" => start_at
+      }
+      post_api("b2_list_parts", request_params).tap do |data|
+        data[:_cursor] = {key: "parts", start_at: data["nextPartNumber"], stop: data["nextPartNumber"].nil?}
       end
     end
 
@@ -428,14 +452,14 @@ module Backblaze::B2
     # @see https://www.backblaze.com/b2/docs/b2_list_unfinished_large_files.html
     def list_unfinished_large_files(bucket_id, start_at: nil, count: nil, prefix: nil)
       start_id = start_at.is_a?(Hash) ? start_at[:id] : start_at
-      request_attributes = {
-        bucketId: bucket_id,
-        startFileId: start_id,
-        maxFileCount: count,
-        namePrefix: prefix
+      request_params = {
+        "bucketId" => bucket_id,
+        "startFileId" => start_id,
+        "maxFileCount" => count,
+        "namePrefix" => prefix
       }
-      post_api("b2_list_unfinished_large_files", request_attributes).tap do |data|
-        data[:iter] = {key: "files", start_at: {id: data["nextFileId"]}, stop: data["nextFileId"].nil?}
+      post_api("b2_list_unfinished_large_files", request_params).tap do |data|
+        data[:_cursor] = {key: "files", start_at: {id: data["nextFileId"]}, stop: data["nextFileId"].nil?}
       end
     end
 
@@ -452,13 +476,13 @@ module Backblaze::B2
     # @see https://www.backblaze.com/b2/docs/files.html#fileInfo How Backblaze handles file info and b2-metadata
     # @see https://www.backblaze.com/b2/docs/content-types.html Automatic content type mappings
     def start_large_file(bucket_id, name, content_type: "b2/x-auto", info: {})
-      request_attributes = {
-        bucketId: bucket_id,
-        fileName: name,
-        contentType: content_type,
-        fileInfo: info
+      request_params = {
+        "bucketId" => bucket_id,
+        "fileName" => name,
+        "contentType" => content_type,
+        "fileInfo" => info
       }
-      post_api("b2_start_large_file", request_attributes)
+      post_api("b2_start_large_file", request_params)
     end
 
     ##
@@ -473,19 +497,82 @@ module Backblaze::B2
     # @raise [ApiError] when the revision does not match
     # @see https://www.backblaze.com/b2/docs/b2_update_bucket.html
     def update_bucket(bucket_id, type: nil, info: nil, cors: nil, lifecycle: nil, if_revision_is: nil)
-      request_attributes = {
-        accountId: account_id,
-        bucketId: bucket_id,
-        bucketType: type,
-        bucketInfo: info,
-        corsRules: cors,
-        lifecycleRules: lifecycle,
-        ifRevisionIs: if_revision_is
+      request_params = {
+        "accountId" => account_id,
+        "bucketId" => bucket_id,
+        "bucketType" => type,
+        "bucketInfo" => info,
+        "corsRules" => cors,
+        "lifecycleRules" => lifecycle,
+        "ifRevisionIs" => if_revision_is
       }
-      post_api("b2_update_bucket", request_attributes)
+      post_api("b2_update_bucket", request_params)
     end
 
     # @!endgroup
+
+    ##
+    # Result of a "list" call
+    # @!attribute [rw] start_at
+    #   Where to start the next iteration
+    # @!attribute [rw] count
+    #   @return [Integer] number of results returned
+    # @!attribute [rw] stop
+    #   @return [Boolean] if the listing reached the end of all listable results
+    # @!attribute [rw] results
+    #   @return [Array, nil] optional results list
+    # @!parse
+    #   alias_method :to_a, :results
+    ListResult = Struct.new(:start_at, :count, :stop, :results) do
+      alias_method :to_a, :results
+    end
+
+    ##
+    # Provide a generic interface for getting a list of values from the account
+    # @param [Symbol] method_name name of the api list method
+    # @param [Array] args Args to splat into the list method
+    # @param [Hash] options Options hash to forward to the api
+    # @option options [Numeric, :all] :count Stop after fetching this many files. When passed a positive value,
+    #   this is the case. If you want no limit on the results returned, use the special value `:all`. This will set
+    #   count to Float::INFINITE.
+    # @option options [Integer] :batch_size Max number of requests to send
+    # @option options :start_at First place to start at
+    # @yield Returns each object that should be processed
+    # @yieldparam [Hash] item Each item returned by the api
+    # @return [ListResult] Last iterator and total number or results returned
+    def list_generic(method_name, *args, **options, &block)
+      count = options.delete(:limit)
+      batch_size = options.delete(:batch_size) { 1_000 }
+      total = 0
+      last_count = 1
+      if count == :all
+        count = Float::INFINITY
+      elsif count <= 0
+        raise ArgumentError, "count must be positive"
+      end
+
+      last_iter = nil
+
+      while total < count && last_count > 0
+        batch_count = [batch_size, count - total].min
+
+        options[:count] = batch_count
+        data = public_send(method_name, *args, **options)
+        data_key = data[:_cursor][:key]
+        total += data[data_key].length
+        last_iter = data[:_cursor]
+
+        data[data_key].each(&block)
+
+        if data[:_cursor][:stop]
+          break
+        else
+          options[:start_at] = data[:_cursor][:start_at]
+        end
+      end
+
+      ListResult.new(last_iter[:start_at], total, last_iter[:stop], nil)
+    end
 
     private
 

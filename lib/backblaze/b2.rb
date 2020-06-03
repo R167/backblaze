@@ -7,7 +7,6 @@ require "backblaze/b2/api"
 require "backblaze/b2/account"
 require "backblaze/b2/base"
 require "backblaze/b2/exceptions"
-require "backblaze/b2/resource"
 require "backblaze/b2/bucket"
 require "backblaze/b2/key"
 require "backblaze/b2/file_version"
@@ -43,14 +42,14 @@ module Backblaze::B2
     ##
     # Configure the default Account
     # @yield Configure the default account
-    # @yieldparam [AccountOptions] c Account options. Can be called with setters for all of the keyword params of
+    # @yieldparam [Account::Options] c Account options. Can be called with setters for all of the keyword params of
     #   {Account#initialize}
     # @example Setting the application key
     #   Backblaze::B2.config do |c|
     #     c.application_key_id = "master_account_key_id"
     #     c.application_key = "master_account_key"
     #   end
-    # @return [void]
+    # @return [Account::Options]
     def config
       # Create the options object and
       @config ||= Account::Options.new
@@ -59,9 +58,9 @@ module Backblaze::B2
 
       if block_given?
         yield @config
-      else
-        @config
       end
+
+      @config
     end
 
     alias login! config

@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "net/http"
 require "tempfile"
 require "stringio"
 require "digest"
@@ -161,6 +162,12 @@ module Backblaze::B2
         headers = headers.merge(b2_headers, {
           "Content-Length" => size, "User-Agent" => Api::USER_AGENT, "X-Bz-Content-Sha1" => file_digest(file, size)
         })
+        uri = URI(url)
+
+        request = Net::HTTP::Post.new(uri)
+        headers.each do |header, value|
+          request[header] = value
+        end
 
         response = HTTP.headers(**headers).auth(auth).post(url, body: file)
         if file.respond_to?(:unlink)
@@ -191,11 +198,11 @@ module Backblaze::B2
         while bytes_read < size
           # Make sure we don't read more than we're supposed to
           read_bytes = [BLOCK_SIZE, size - bytes_read].min
-          digest << file.sysread(read_bytes, buffer)
+          digest << file.read(read_bytes, buffer)
           bytes_read += buffer.length
         end
 
-        file.sysseek(return_pos)
+        file.seek(return_pos)
         digest.hexdigest
       end
     end
