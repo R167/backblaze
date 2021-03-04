@@ -23,12 +23,6 @@ jobs:
       matrix:
         os: [ ubuntu-latest ]
         ruby: [ "2.5", "2.6", "2.7", "3.0" ]
-        job: [ rspec ]
-        include:
-          # Execute standardrb as a separate stage
-          - os: ubuntu-latest
-            ruby: 3.0
-            job: standardrb
     steps:
       - name: checkout
         uses: actions/checkout@v2
@@ -47,8 +41,4 @@ jobs:
       - name: install dependencies
         run:  bundle update --group runtime # This updates all runtime dependencies
       - name: specs
-        if:   matrix.job == 'rspec'
         run:  bundle exec rake spec
-      - name: standardrb (linter)
-        if:   matrix.job == 'standardrb'
-        run:  bundle exec rake standard

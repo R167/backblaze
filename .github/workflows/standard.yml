@@ -29,5 +29,5 @@ jobs:
         run: |
           bundle config set without 'default runtime test development doc'
           bundle install
-      - name: Run RuboCop
-        run: bundle exec standard
+      - name: Run Standard
+        run: bundle exec rake standard
