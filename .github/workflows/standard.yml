@@ -30,4 +30,4 @@ jobs:
           bundle config set without 'default runtime test development doc'
           bundle install
       - name: Run Standard
-        run: bundle exec rake standard
+        run: bundle exec standardrb
