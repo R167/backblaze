@@ -1,0 +1,33 @@
+name: Standard
+
+on: [push, pull_request]
+
+env:
+  BUNDLE_CLEAN: "true"
+  BUNDLE_PATH: vendor/bundle
+  BUNDLE_JOBS: 3
+  BUNDLE_RETRY: 3
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Set up Ruby 2.7
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: 2.7
+      - name: bundler gem cache
+        uses: actions/cache@v1
+        with:
+          path: ${{ env.BUNDLE_PATH }}
+          key: ruby-standard-${{ matrix.ruby }}-${{ hashFiles('**/Gemfile.lock') }}
+          restore-keys: |
+            ruby-standard-${{ matrix.ruby }}-
+            ruby-standard-
+      - name: Install gems
+        run: |
+          bundle config set without 'default runtime test development doc'
+          bundle install
+      - name: Run RuboCop
+        run: bundle exec standard

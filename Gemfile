@@ -9,7 +9,7 @@ end
 gem "rake"
 
 group :development, :test do
-  gem "standard", "~> 1.0.0"
+  gem "standard", "~> 1.0.0", groups: :lint
   gem "dotenv", require: false
 end
 
