@@ -63,7 +63,7 @@ module Backblaze::B2
       @config
     end
 
-    alias login! config
+    alias_method :login!, :config
 
     ##
     # Resets config and default account back to being unset

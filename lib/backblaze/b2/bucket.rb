@@ -33,22 +33,22 @@ module Backblaze::B2
     def name
       self["bucketName"]
     end
-    alias bucket_name name
+    alias_method :bucket_name, :name
 
     def id
       self["bucketId"]
     end
-    alias bucket_id id
+    alias_method :bucket_id, :id
 
     def type
       self["bucketType"]
     end
-    alias bucket_type type
+    alias_method :bucket_type, :type
 
     def info
       self["bucketInfo"]
     end
-    alias bucket_info info
+    alias_method :bucket_info, :info
 
     def cors_rules
       self["corsRules"]

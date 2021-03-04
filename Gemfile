@@ -9,8 +9,7 @@ end
 gem "rake"
 
 group :development, :test do
-  # Lock standard to a particular version, esp. cause it's still 0.x.x according to SemVer
-  gem "standard", "0.4.7"
+  gem "standard", "~> 1.0.0"
   gem "dotenv", require: false
 end
 

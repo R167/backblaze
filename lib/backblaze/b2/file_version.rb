@@ -29,18 +29,18 @@ module Backblaze::B2
     def id
       self["fileId"]
     end
-    alias file_id id
+    alias_method :file_id, :id
 
     def name
       self["fileName"]
     end
-    alias file_name name
+    alias_method :file_name, :name
 
     def size
       self["contentLength"]
     end
-    alias content_length size
-    alias length size
+    alias_method :content_length, :size
+    alias_method :length, :size
 
     def action
       self["action"]
@@ -49,7 +49,7 @@ module Backblaze::B2
     def sha1
       self["contentSha1"]
     end
-    alias checksum sha1
+    alias_method :checksum, :sha1
 
     def md5
       self["contentMd5"]
@@ -62,7 +62,7 @@ module Backblaze::B2
     def info
       self["fileInfo"]
     end
-    alias file_info info
+    alias_method :file_info, :info
 
     def upload_time
       @upload_timestamp ||= long_to_time(self["uploadTimestamp"]) unless self["uploadTimestamp"].nil?

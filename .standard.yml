@@ -5,5 +5,3 @@ format: progress
 ruby_version: 2.5
 
 ignore:
-  - '**/*':
-    - Standard/SemanticBlocks

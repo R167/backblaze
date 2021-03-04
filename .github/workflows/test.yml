@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - master
+      # Temp include the rewrite branch
       - complete-rewrite
     tags:
       - v*
@@ -21,11 +22,12 @@ jobs:
       fail-fast: false
       matrix:
         os: [ ubuntu-latest ]
-        ruby: [ 2.5, 2.6, 2.7 ]
+        ruby: [ 2.5, 2.6, 2.7, 3.0 ]
         job: [ rspec ]
         include:
+          # Execute standardrb as a separate stage
           - os: ubuntu-latest
-            ruby: 2.7
+            ruby: 3.0
             job: standardrb
     steps:
       - name: checkout

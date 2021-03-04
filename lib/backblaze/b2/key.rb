@@ -40,17 +40,17 @@ module Backblaze::B2
     def name
       self["keyName"]
     end
-    alias key_name name
+    alias_method :key_name, :name
 
     def id
       self["applicationKeyId"]
     end
-    alias application_key_id id
+    alias_method :application_key_id, :id
 
     def secret
       self["applicationKey"]
     end
-    alias application_key secret
+    alias_method :application_key, :secret
 
     def expires?
       !expiration.nil?
