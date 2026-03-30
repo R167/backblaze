@@ -20,6 +20,8 @@ module Backblaze::B2
     # @raise [Backblaze::AuthError] when unable to authenticate
     # @return [void]
     def login(account_id:, application_key:, api_path: '/b2api/v2/')
+      @credentials = {account_id: account_id, application_key: application_key, api_path: api_path}
+
       options = {
         basic_auth: {username: account_id, password: application_key}
       }
@@ -28,8 +30,9 @@ module Backblaze::B2
       raise Backblaze::AuthError.new(response) unless response.code == 200
 
       @account_id = response['accountId']
-      @authorizationToken = response['authorizationToken']
       @api_path = api_path
+      @token = response['authorizationToken']
+      @authorized_at = Time.now
 
       # v2+ nests storage fields under apiInfo.storageApi
       # v1 has them at the top level
@@ -48,10 +51,26 @@ module Backblaze::B2
         @allowed = response.fetch('allowed', nil)
       end
 
-      @token = response['authorizationToken']
-
       Backblaze::B2::Base.base_uri "#{@api_url}#{api_path}"
       Backblaze::B2::Base.headers 'Authorization' => @token, 'Content-Type' => 'application/json'
+    end
+
+    # Re-authenticate using stored credentials.
+    # Called automatically when a request fails with expired_auth_token.
+    # @raise [Backblaze::AuthError] if re-authentication fails
+    # @raise [Backblaze::Error] if no credentials are stored
+    # @return [void]
+    def reauthorize!
+      raise Backblaze::Error, "No stored credentials — call login first" unless @credentials
+      login(**@credentials)
+    end
+
+    # Whether the auth token is likely expired based on time.
+    # B2 tokens are valid for at most 24 hours.
+    # @return [Boolean]
+    def token_stale?
+      return true unless @authorized_at
+      Time.now - @authorized_at > 23 * 3600 # refresh at 23h to avoid edge cases
     end
 
     def credentials_file(filename, raise_errors: true, logging: false)

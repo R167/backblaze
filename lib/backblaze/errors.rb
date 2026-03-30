@@ -33,6 +33,33 @@ module Backblaze
     end
 
     ##
+    # Whether this error is transient and the request can be retried.
+    # B2 documents these as retryable: 408, 429, 500, 503, and
+    # 401 with code "expired_auth_token".
+    # @return [Boolean]
+    def retryable?
+      s = status.to_i
+      return true if [408, 429, 500, 503].include?(s)
+      return true if s == 401 && code == 'expired_auth_token'
+      false
+    end
+
+    # Whether this error indicates the auth token has expired
+    # @return [Boolean]
+    def token_expired?
+      status.to_i == 401 && code == 'expired_auth_token'
+    end
+
+    # Seconds to wait before retrying, from B2's Retry-After header.
+    # Returns nil if not present.
+    # @return [Integer, nil]
+    def retry_after
+      if @response.respond_to?(:headers) && @response.headers['retry-after']
+        @response.headers['retry-after'].to_i
+      end
+    end
+
+    ##
     # Shortcut to access the response keys
     # @return [Object] the object stored at `key` in the response
     def [](key)

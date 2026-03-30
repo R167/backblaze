@@ -306,6 +306,97 @@ describe Backblaze::B2::File do
     end
   end
 
+  describe '.create with upload retry' do
+    let(:upload_url_response) do
+      {
+        'uploadUrl' => 'https://pod-000-1005-03.backblaze.com/b2api/v1/b2_upload_file/bucket123/token',
+        'authorizationToken' => 'upload_token_123'
+      }
+    end
+
+    let(:retry_upload_url_response) do
+      {
+        'uploadUrl' => 'https://pod-000-1005-04.backblaze.com/b2api/v1/b2_upload_file/bucket123/token2',
+        'authorizationToken' => 'upload_token_456'
+      }
+    end
+
+    let(:upload_response) do
+      {
+        'fileName' => 'test.txt',
+        'bucketId' => 'bucket123',
+        'contentLength' => 11,
+        'fileId' => 'file_id_123',
+        'action' => 'upload'
+      }
+    end
+
+    it 'should retry on transient 500 error with a new upload URL' do
+      # First get_upload_url call
+      stub_request(:post, /.*b2_get_upload_url.*/).to_return(
+        {body: upload_url_response.to_json, headers: {'Content-Type' => 'application/json'}, status: 200},
+        {body: retry_upload_url_response.to_json, headers: {'Content-Type' => 'application/json'}, status: 200}
+      )
+
+      # First upload fails with 500, second succeeds
+      stub_request(:post, upload_url_response['uploadUrl']).to_return(
+        body: '{"status":500,"code":"internal_error","message":"server error"}',
+        status: 500
+      )
+      stub_request(:post, retry_upload_url_response['uploadUrl']).to_return(
+        body: upload_response.to_json,
+        status: 200
+      )
+
+      allow_any_instance_of(Backblaze::B2::File).to receive(:sleep)
+
+      file = Backblaze::B2::File.create(
+        data: 'hello world',
+        bucket: bucket,
+        name: 'test.txt',
+        max_retries: 3
+      )
+
+      expect(file.name).to eq('test.txt')
+    end
+
+    it 'should raise after exhausting retries' do
+      stub_request(:post, /.*b2_get_upload_url.*/).to_return(
+        body: upload_url_response.to_json,
+        headers: {'Content-Type' => 'application/json'},
+        status: 200
+      )
+
+      stub_request(:post, upload_url_response['uploadUrl']).to_return(
+        body: '{"status":500,"code":"internal_error","message":"server error"}',
+        status: 500
+      )
+
+      allow_any_instance_of(Backblaze::B2::File).to receive(:sleep)
+
+      expect {
+        Backblaze::B2::File.create(data: 'hello', bucket: bucket, name: 'test.txt', max_retries: 0)
+      }.to raise_error(Backblaze::FileError, /internal_error/)
+    end
+
+    it 'should not retry on non-retryable errors' do
+      stub_request(:post, /.*b2_get_upload_url.*/).to_return(
+        body: upload_url_response.to_json,
+        headers: {'Content-Type' => 'application/json'},
+        status: 200
+      )
+
+      stub_request(:post, upload_url_response['uploadUrl']).to_return(
+        body: '{"status":400,"code":"bad_request","message":"invalid"}',
+        status: 400
+      )
+
+      expect {
+        Backblaze::B2::File.create(data: 'hello', bucket: bucket, name: 'test.txt')
+      }.to raise_error(Backblaze::FileError, /bad_request/)
+    end
+  end
+
   describe '#method_missing / #respond_to_missing?' do
     let(:file) do
       Backblaze::B2::File.new(

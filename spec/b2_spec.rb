@@ -96,6 +96,45 @@ describe Backblaze::B2 do
     end
   end
 
+  describe '.reauthorize!' do
+    it 'should re-login with stored credentials' do
+      stub_request(:get, 'https://api.backblazeb2.com/b2api/v2/b2_authorize_account').
+        with(basic_auth: ['test', 'test']).
+        to_return(
+          body: {accountId: 'test', authorizationToken: 'new_token', apiInfo: {storageApi: {apiUrl: 'https://api900.backblaze.com', downloadUrl: 'https://f900.backblaze.com'}}}.to_json,
+          headers: {'Content-Type' => 'application/json'},
+          status: 200
+        )
+
+      Backblaze::B2.login(account_id: 'test', application_key: 'test')
+      Backblaze::B2.reauthorize!
+      expect(Backblaze::B2.token).to eq('new_token')
+    end
+
+    it 'should raise when no credentials stored' do
+      # Reset credentials by setting instance variable
+      Backblaze::B2.instance_variable_set(:@credentials, nil)
+      expect { Backblaze::B2.reauthorize! }.to raise_error(Backblaze::Error, /No stored credentials/)
+    end
+  end
+
+  describe '.token_stale?' do
+    it 'should be stale when never authorized' do
+      Backblaze::B2.instance_variable_set(:@authorized_at, nil)
+      expect(Backblaze::B2.token_stale?).to be true
+    end
+
+    it 'should not be stale when recently authorized' do
+      Backblaze::B2.instance_variable_set(:@authorized_at, Time.now)
+      expect(Backblaze::B2.token_stale?).to be false
+    end
+
+    it 'should be stale after 23 hours' do
+      Backblaze::B2.instance_variable_set(:@authorized_at, Time.now - 24 * 3600)
+      expect(Backblaze::B2.token_stale?).to be true
+    end
+  end
+
   describe '.credentials_file' do
     it 'should load from a JSON file' do
       stub_request(:get, 'https://api.backblazeb2.com/b2api/v2/b2_authorize_account').

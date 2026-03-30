@@ -3,12 +3,46 @@ module Backblaze::B2
     include HTTParty
     include Backblaze::Utils
 
+    MAX_RETRIES = 5
+
     format :json
 
     [:get, :head, :post, :put].each do |req|
       define_method(req) do |path, options={}, &block|
         self.class.send(req, path, options, &block)
       end
+    end
+
+    # Execute a block with automatic retry on transient B2 errors.
+    # Handles token expiry (re-authenticates), Retry-After headers,
+    # and exponential backoff for retryable status codes (408, 429, 500, 503).
+    #
+    # @param max_retries [Integer] maximum number of retries (default: MAX_RETRIES)
+    # @yield the block to execute
+    # @return the block's return value
+    # @raise [Backblaze::RequestError] if all retries are exhausted
+    def self.with_retry(max_retries: MAX_RETRIES)
+      attempts = 0
+      begin
+        yield
+      rescue Backblaze::RequestError => e
+        raise unless e.retryable?
+        attempts += 1
+        raise if attempts > max_retries
+
+        if e.token_expired?
+          Backblaze::B2.reauthorize!
+          Base.headers 'Authorization' => Backblaze::B2.token, 'Content-Type' => 'application/json'
+        end
+
+        delay = e.retry_after || [1 * (2 ** (attempts - 1)), 64].min
+        sleep(delay)
+        retry
+      end
+    end
+
+    def with_retry(max_retries: MAX_RETRIES, &block)
+      self.class.with_retry(max_retries: max_retries, &block)
     end
 
     protected

@@ -17,7 +17,7 @@ module Backblaze::B2
     end
 
     class << self
-      def create(data:, bucket:, name: nil, content_type: 'b2/x-auto', info: {})
+      def create(data:, bucket:, name: nil, content_type: 'b2/x-auto', info: {}, max_retries: Base::MAX_RETRIES)
         raise ArgumentError, 'data must not be nil' if data.nil?
 
         bucket_id, bucket_name = resolve_bucket(bucket)
@@ -29,7 +29,7 @@ module Backblaze::B2
         data, name, tempfile = prepare_data(data, name)
 
         begin
-          response = perform_upload(upload_url, data, name, content_type, info)
+          response = perform_upload_with_retry(upload_url, data, name, content_type, info, bucket_id, max_retries)
         ensure
           tempfile.close! if tempfile
         end
@@ -117,6 +117,33 @@ module Backblaze::B2
         end
 
         [data, name, tempfile]
+      end
+
+      # Retry uploads per B2 spec: on transient failure, obtain a fresh upload URL and retry.
+      # Also handles expired auth tokens by re-authenticating first.
+      def perform_upload_with_retry(upload_url, data, name, content_type, info, bucket_id, max_retries)
+        attempts = 0
+        begin
+          perform_upload(upload_url, data, name, content_type, info)
+        rescue Backblaze::FileError => e
+          raise unless e.retryable?
+          attempts += 1
+          raise if attempts > max_retries
+
+          if e.token_expired?
+            Backblaze::B2.reauthorize!
+            Base.headers 'Authorization' => Backblaze::B2.token, 'Content-Type' => 'application/json'
+          end
+
+          delay = e.retry_after || [1 * (2 ** (attempts - 1)), 64].min
+          sleep(delay)
+
+          # B2 requires a fresh upload URL after any upload failure
+          upload_url = Bucket.upload_url(bucket_id: bucket_id)
+          # Rewind file data for retry
+          data.rewind if data.respond_to?(:rewind)
+          retry
+        end
       end
 
       def perform_upload(upload_url, data, name, content_type, info)
