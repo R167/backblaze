@@ -7,20 +7,15 @@ module Backblaze
 
   ##
   # Basic needs for error messages.
-  # @note this could be abstract, but just keeps things simple.
   class RequestError < Error
-    ##
-    # Creates the Error
-    # @param [HTTParty::Response] response the json response
-    def initialize(response)
-      @response = response
-    end
+    attr_reader :response
 
     ##
-    # The response from the server
-    # @return [HTTParty::Response] the response
-    def response
-      @response
+    # Creates the Error
+    # @param [HTTParty::Response, Hash] response the json response
+    def initialize(response)
+      @response = response
+      super("#{self['code']}: #{self['message']} (status: #{self['status']})")
     end
 
     ##
@@ -38,14 +33,6 @@ module Backblaze
     end
 
     ##
-    # The Backblaze B2 error message which is a human explanation
-    # @return [String] the problem in human words
-    def message
-      self['message']
-    end
-
-
-    ##
     # Shortcut to access the response keys
     # @return [Object] the object stored at `key` in the response
     def [](key)
@@ -56,18 +43,14 @@ module Backblaze
   ##
   # Errors destroying file versions
   class DestroyErrors < Error
+    attr_reader :errors
+
     ##
     # Creates the Error
     # @param [Array<Backblaze::FileError>] errors errors raised destroying files
     def initialize(errors)
       @errors = errors
-    end
-
-    ##
-    # The Backblaze B2 error messages which broke things
-    # @return [Array<Backblaze::FileError>] errors errors raised destroying files
-    def errors
-      @errors
+      super("#{errors.size} file(s) failed to delete")
     end
   end
 

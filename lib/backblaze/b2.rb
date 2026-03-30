@@ -37,10 +37,10 @@ module Backblaze::B2
 
     def credentials_file(filename, raise_errors: true, logging: false)
       opts = nil
-      open(filename, 'r') do |f|
+      ::File.open(filename, 'r') do |f|
         if ::File.extname(filename) == '.json'
           require 'json'
-          opts = JSON.load(f)
+          opts = JSON.parse(f.read)
         else
           require 'psych'
           opts = Psych.load(f.read)

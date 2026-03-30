@@ -4,12 +4,12 @@ module Backblaze::B2
   # A class to represent the online buckets. Mostly used for file access
   class Bucket < Base
     ##
-    # Creates a bucket from all of the possible parameters. This sould be rarely used and instead use a finder or creator
+    # Creates a bucket from all of the possible parameters. This should be rarely used and instead use a finder or creator
     # @param [#to_s] bucket_name the bucket name
     # @param [#to_s] bucket_id the bucket id
     # @param [#to_s] bucket_type the bucket publicity type
     # @param [#to_s] account_id the account to which this bucket belongs
-    def initialize(bucket_name:, bucket_id:, bucket_type:, account_id:, cache: false)
+    def initialize(bucket_name:, bucket_id:, bucket_type:, account_id:, **_)
       @bucket_name = bucket_name
       @bucket_id = bucket_id
       @bucket_type = bucket_type
@@ -17,14 +17,18 @@ module Backblaze::B2
     end
 
     # @return [String] bucket name
-    def bucket_name
-      @bucket_name
-    end
+    attr_reader :bucket_name
+    alias_method :name, :bucket_name
 
     # @return [String] bucket id
-    def bucket_id
-      @bucket_id
-    end
+    attr_reader :bucket_id
+    alias_method :id, :bucket_id
+
+    # @return [String] account id
+    attr_reader :account_id
+
+    # @return [String] bucket type
+    attr_reader :bucket_type
 
     # @return [Boolean] is the bucket public
     def public?
@@ -36,71 +40,61 @@ module Backblaze::B2
       !public?
     end
 
-    # @return [String] account id
-    def account_id
-      @account_id
-    end
-
-    # @return [String] bucket type
-    def bucket_type
-      @bucket_type
-    end
-
-    # Check if eqivalent. Takes advantage of globally unique names
+    # Check if equivalent. Takes advantage of globally unique names
     # @return [Boolean] equality
     def ==(other)
       bucket_name == other.bucket_name
     end
 
     ##
-    # Lists all files that are in the bucket. This is the basic building block for the search.
-    # @param [Integer] limit max number of files to retreive. Set to `-1` to get all files.
-    #   This is not exact as it mainly just throws the limit into max param on the request
-    #   so it will try to grab at least `limit` files, unless there aren't enoungh in the bucket
+    # Lists all files in the bucket.
+    # @param [Integer] limit max number of files to retrieve. Set to `-1` to get all files.
     # @param [Boolean] cache if there is no cache, create one. If there is a cache, use it.
-    #   Will check if the previous cache had the same size limit and convert options
-    # @param [Boolean] convert convert the files to Backblaze::B2::File objects
-    # @param [Integer] double_check_server whether or not to assume the server returns the most files possible
-    # @return [Array<Backblaze::B2::File>] when convert is true
-    # @return [Array<Hash>] when convert is false
-    # @note many of these methods are for the recusion
-    def file_names(limit: 100, cache: false, convert: true, double_check_server: false)
+    # @return [Array<Backblaze::B2::File>]
+    def files(limit: 100, cache: false)
       if cache && !@file_name_cache.nil?
-        if limit <= @file_name_cache[:limit] && convert == @file_name_cache[:convert]
+        if limit <= @file_name_cache[:limit]
           return @file_name_cache[:files]
         end
       end
 
-      retrieve_count = (double_check_server ? 0 : -1)
-      files = file_list(bucket_id: bucket_id, limit: limit, retrieved: retrieve_count, first_file: nil, start_field: 'startFileName'.freeze)
+      raw_files = file_list(bucket_id: bucket_id, limit: limit, retrieved: 0, first_file: nil, start_field: 'startFileName')
 
-      merge_params = {bucket_id: bucket_id}
-      files.map! do |f|
-        Backblaze::B2::File.new(**f.merge(merge_params))
-      end if convert
+      files = raw_files.map do |f|
+        Backblaze::B2::File.new(**f.merge(bucket_id: bucket_id, bucket_name: bucket_name))
+      end
       if cache
-        @file_name_cache = {limit: limit, convert: convert, files: files}
+        @file_name_cache = {limit: limit, files: files}
       end
       files
     end
 
+    # @deprecated Use {#files} instead
+    def file_names(limit: 100, cache: false, convert: true, double_check_server: false)
+      if convert
+        files(limit: limit, cache: cache)
+      else
+        file_list(bucket_id: bucket_id, limit: limit, retrieved: (double_check_server ? 0 : -1), first_file: nil, start_field: 'startFileName')
+      end
+    end
+
+    ##
+    # Lists all file versions in the bucket, grouped by file name.
+    # @param [Integer] limit max number of versions to retrieve. Set to `-1` to get all.
+    # @param [Boolean] cache use cached results if available
+    # @return [Array<Backblaze::B2::File>]
     def file_versions(limit: 100, cache: false, convert: true, double_check_server: false)
       if cache && !@file_versions_cache.nil?
-        if limit <= @file_versions_cache[:limit] && convert == @file_versions_cache[:convert]
+        if limit <= @file_versions_cache[:limit]
           return @file_versions_cache[:files]
         end
       end
-      file_versions = super(limit: limit, convert: convert, double_check_server: double_check_server, bucket_id: bucket_id)
-      files = file_versions.group_by {|version| convert ? version.file_name : version[:file_name]}
-      if convert
-        files = files.map do |name, versions|
-          File.new(file_name: name, bucket_id: bucket_id, versions: versions)
-        end
+      versions = super(limit: limit, double_check_server: double_check_server, bucket_id: bucket_id)
+      files = versions.group_by(&:file_name).map do |name, vers|
+        File.new(file_name: name, bucket_id: bucket_id, bucket_name: bucket_name, versions: vers)
       end
       if cache
-        @file_versions_cache = {limit: limit, convert: convert, files: files}
-      else
-        @file_versions_cache = {}
+        @file_versions_cache = {limit: limit, files: files}
       end
       files
     end
@@ -117,9 +111,14 @@ module Backblaze::B2
       @destroyed = true
     end
 
-    # @return [Boolean] whether this bucket still exists
+    # @return [Boolean] whether this bucket has been destroyed locally
+    def destroyed?
+      !!@destroyed
+    end
+
+    # @deprecated Use {#destroyed?} instead
     def exists?
-      !@destroyed
+      !destroyed?
     end
 
     # Update this bucket's type
@@ -145,7 +144,7 @@ module Backblaze::B2
       ##
       # Create a bucket
       # @param [String] name name of the new bucket
-      #   must be no more than 50 character and only contain letters, digits, "-", and "_".
+      #   must be no more than 50 characters and only contain letters, digits, "-", and "_".
       #   must be globally unique
       # @param [:public, :private] type determines the type of bucket
       # @raise [Backblaze::BucketError] unable to create the specified bucket
@@ -159,9 +158,7 @@ module Backblaze::B2
 
         raise Backblaze::BucketError.new(response) unless response.code / 100 == 2
 
-        params = Hash[response.map{|k,v| [Backblaze::Utils.underscore(k).to_sym, v]}]
-
-        new(**params)
+        new(**response_to_hash(response))
       end
 
       def upload_url(bucket_id:)
@@ -175,20 +172,19 @@ module Backblaze::B2
       # @param [String] name the bucket name to find
       # @return [Backblaze::B2::Bucket, nil] the bucket or nil if not found
       def find(name:)
-        buckets.find { |b| b.bucket_name == name }
+        buckets.find { |b| b.name == name }
       end
 
       ##
       # List buckets for account
-      # @return [Array<Backblaze::Bucket>] buckets for this account
+      # @return [Array<Backblaze::B2::Bucket>] buckets for this account
       def buckets
         body = {
           accountId: Backblaze::B2.account_id
         }
         response = post('/b2_list_buckets', body: body.to_json)
         response['buckets'].map do |bucket|
-          params = Hash[bucket.map{|k,v| [Backblaze::Utils.underscore(k).to_sym, v]}]
-          new(**params)
+          new(**response_to_hash(bucket))
         end
       end
     end

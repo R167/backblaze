@@ -12,6 +12,10 @@ module Backblaze::Utils
     "#{capitalize ? word[0, 1].upcase : word[0, 1].downcase}#{word.split('_').map(&:capitalize).join('')[1..-1]}"
   end
 
+  def response_to_hash(response)
+    Hash[response.map { |k, v| [underscore(k).to_sym, v] }]
+  end
+
   def self.included(base)
     base.extend(ClassMethods)
   end

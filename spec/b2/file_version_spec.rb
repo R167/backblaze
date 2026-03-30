@@ -21,6 +21,15 @@ describe Backblaze::B2::FileVersion do
       expect(version.file_name).to eq('documents/report.pdf')
       expect(version.upload_timestamp).to be_a(Time)
     end
+
+    it 'should ignore unknown keyword args' do
+      expect {
+        Backblaze::B2::FileVersion.new(
+          file_id: 'id', size: 1, upload_timestamp: 1000,
+          action: 'upload', file_name: 'f.txt', content_type: 'text/plain'
+        )
+      }.not_to raise_error
+    end
   end
 
   describe '#get_info' do
@@ -61,7 +70,7 @@ describe Backblaze::B2::FileVersion do
         status: 404
       )
 
-      expect { version.get_info }.to raise_error(Backblaze::FileError)
+      expect { version.get_info }.to raise_error(Backblaze::FileError, /not_found/)
     end
   end
 
@@ -83,17 +92,18 @@ describe Backblaze::B2::FileVersion do
       )
 
       version.destroy!
+      expect(version.destroyed?).to be true
       expect(version.exists?).to be false
     end
 
-    it 'should raise on error' do
+    it 'should raise on error with descriptive message' do
       stub_request(:post, /.*b2_delete_file_version.*/).to_return(
         body: '{"status":400,"code":"bad_request","message":"cannot delete"}',
         headers: {'Content-Type' => 'application/json'},
         status: 400
       )
 
-      expect { version.destroy! }.to raise_error(Backblaze::FileError)
+      expect { version.destroy! }.to raise_error(Backblaze::FileError, /bad_request.*cannot delete/)
     end
   end
 

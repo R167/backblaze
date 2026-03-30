@@ -5,19 +5,6 @@ module Backblaze::B2
 
     format :json
 
-    # @!method get(path, options={}, &block)
-    # Calls the class level equivalent from HTTParty
-    # @see http://www.rubydoc.info/github/jnunemaker/httparty/HTTParty/ClassMethods HTTParty::ClassMethods
-
-    # @!method head(path, options={}, &block)
-    # (see #get)
-
-    # @!method post(path, options={}, &block)
-    # (see #get)
-
-    # @!method put(path, options={}, &block)
-    # (see #get)
-
     [:get, :head, :post, :put].each do |req|
       define_method(req) do |path, options={}, &block|
         self.class.send(req, path, options, &block)
@@ -26,28 +13,24 @@ module Backblaze::B2
 
     protected
 
-    def file_versions(bucket_id:, convert:, limit:, double_check_server:, file_name: nil, &block)
+    def file_versions(bucket_id:, limit:, double_check_server:, file_name: nil, &block)
       retrieve_count = (double_check_server ? 0 : -1)
       files = file_list(bucket_id: bucket_id, limit: limit, retrieved: retrieve_count, file_name: file_name, first_file: nil, start_field: 'startFileId'.freeze)
 
       files.map! do |f|
-        if block.nil?
-          Backblaze::B2::FileVersion.new(**f)
-        else
-          block.call(f)
-        end
-      end if convert
+        block.nil? ? Backblaze::B2::FileVersion.new(**f) : block.call(f)
+      end
       files.compact
     end
 
     def file_list(limit:, retrieved:, first_file:, start_field:, bucket_id:, file_name: nil, first: true)
-      params = {'bucketId'.freeze => bucket_id}
+      params = {'bucketId' => bucket_id}
       if limit == -1
-        params['maxFileCount'.freeze] = 1000
+        params['maxFileCount'] = 1000
       elsif limit > 1000
-        params['maxFileCount'.freeze] = 1000
+        params['maxFileCount'] = 1000
       elsif limit > 0
-        params['maxFileCount'.freeze] = limit
+        params['maxFileCount'] = limit
       else
         return []
       end
@@ -63,16 +46,14 @@ module Backblaze::B2
 
       raise Backblaze::FileError.new(response) unless response.code == 200
 
-      files = response['files'.freeze]
+      files = response['files']
       halt = false
       files.map! do |f|
         if halt
           nil
         else
-          ret = Hash[f.map{|k,v| [Backblaze::Utils.underscore(k).to_sym, v]}]
-          if file_name && file_name != ret[:file_name]
-            halt = true
-          end
+          ret = response_to_hash(f)
+          halt = true if file_name && file_name != ret[:file_name]
           halt ? nil : ret
         end
       end.compact!
@@ -83,7 +64,7 @@ module Backblaze::B2
         limit = 0 if limit < 0
       end
 
-      next_item = response[start_field.sub('start'.freeze, 'next'.freeze)]
+      next_item = response[start_field.sub('start', 'next')]
 
       if (limit > 0 || limit == -1) && !!next_item && !halt
         files.concat file_list(

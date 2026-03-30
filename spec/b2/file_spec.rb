@@ -51,7 +51,8 @@ describe Backblaze::B2::File do
       )
 
       expect(file).to be_a(Backblaze::B2::File)
-      expect(file.file_name).to eq('test.txt')
+      expect(file.name).to eq('test.txt')
+      expect(file.bucket_name).to eq('test_bucket')
     end
 
     it 'should raise error when data is nil' do
@@ -63,7 +64,7 @@ describe Backblaze::B2::File do
     it 'should raise error when name missing for string data' do
       expect {
         Backblaze::B2::File.create(data: 'hello', bucket: 'bucket123')
-      }.to raise_error(ArgumentError, 'Must provide a file name for data')
+      }.to raise_error(ArgumentError, /file name/)
     end
 
     it 'should accept bucket_id string' do
@@ -78,7 +79,7 @@ describe Backblaze::B2::File do
         name: 'test.txt'
       )
 
-      expect(file.file_name).to eq('test.txt')
+      expect(file.name).to eq('test.txt')
     end
 
     it 'should raise on upload failure' do
@@ -91,11 +92,32 @@ describe Backblaze::B2::File do
         Backblaze::B2::File.create(data: 'hello', bucket: bucket, name: 'test.txt')
       }.to raise_error(Backblaze::FileError)
     end
+
+    it 'should raise on invalid bucket type' do
+      expect {
+        Backblaze::B2::File.create(data: 'hello', bucket: 12345, name: 'test.txt')
+      }.to raise_error(ArgumentError, /bucket must be/)
+    end
   end
 
   describe '#download_url' do
-    let(:file) do
-      Backblaze::B2::File.new(
+    it 'should build url using stored bucket_name' do
+      file = Backblaze::B2::File.new(
+        file_name: 'photos/cat.jpg',
+        bucket_id: 'bucket123',
+        bucket_name: 'test_bucket',
+        file_id: 'file_id_1',
+        size: 100,
+        upload_timestamp: Time.now.to_i * 1000,
+        action: 'upload'
+      )
+
+      url = file.download_url
+      expect(url).to eq('https://f900.backblaze.com/file/test_bucket/photos/cat.jpg')
+    end
+
+    it 'should accept explicit bucket override' do
+      file = Backblaze::B2::File.new(
         file_name: 'photos/cat.jpg',
         bucket_id: 'bucket123',
         file_id: 'file_id_1',
@@ -103,16 +125,60 @@ describe Backblaze::B2::File do
         upload_timestamp: Time.now.to_i * 1000,
         action: 'upload'
       )
+
+      url = file.download_url(bucket: 'my_bucket')
+      expect(url).to eq('https://f900.backblaze.com/file/my_bucket/photos/cat.jpg')
     end
 
-    it 'should build url with bucket object' do
+    it 'should accept a Bucket object' do
+      file = Backblaze::B2::File.new(
+        file_name: 'photos/cat.jpg',
+        bucket_id: 'bucket123',
+        file_id: 'file_id_1',
+        size: 100,
+        upload_timestamp: Time.now.to_i * 1000,
+        action: 'upload'
+      )
+
       url = file.download_url(bucket: bucket)
       expect(url).to eq('https://f900.backblaze.com/file/test_bucket/photos/cat.jpg')
     end
 
-    it 'should build url with bucket name string' do
-      url = file.download_url(bucket: 'my_bucket')
-      expect(url).to eq('https://f900.backblaze.com/file/my_bucket/photos/cat.jpg')
+    it 'should raise when no bucket_name available' do
+      file = Backblaze::B2::File.new(
+        file_name: 'test.txt',
+        bucket_id: 'bucket123',
+        file_id: 'file_id_1',
+        size: 100,
+        upload_timestamp: Time.now.to_i * 1000,
+        action: 'upload'
+      )
+
+      expect { file.download_url }.to raise_error(ArgumentError, /bucket/)
+    end
+  end
+
+  describe '#download' do
+    let(:file) do
+      Backblaze::B2::File.new(
+        file_name: 'test.txt',
+        bucket_id: 'bucket123',
+        bucket_name: 'test_bucket',
+        file_id: 'file_id_1',
+        size: 11,
+        upload_timestamp: Time.now.to_i * 1000,
+        action: 'upload'
+      )
+    end
+
+    it 'should download the file content without needing bucket' do
+      stub_request(:get, 'https://f900.backblaze.com/file/test_bucket/test.txt').to_return(
+        body: 'hello world',
+        status: 200
+      )
+
+      content = file.download
+      expect(content).to eq('hello world')
     end
   end
 
@@ -161,7 +227,6 @@ describe Backblaze::B2::File do
     end
 
     it 'should delete all versions' do
-      # Stub version listing
       version_data = {
         'files' => [
           {'fileId' => 'v1', 'fileName' => 'test.txt', 'size' => 100, 'action' => 'upload', 'uploadTimestamp' => Time.now.to_i * 1000}
@@ -180,6 +245,7 @@ describe Backblaze::B2::File do
       )
 
       file.destroy!
+      expect(file.destroyed?).to be true
       expect(file.exists?).to be false
     end
   end
@@ -215,30 +281,7 @@ describe Backblaze::B2::File do
     end
   end
 
-  describe '#download' do
-    let(:file) do
-      Backblaze::B2::File.new(
-        file_name: 'test.txt',
-        bucket_id: 'bucket123',
-        file_id: 'file_id_1',
-        size: 11,
-        upload_timestamp: Time.now.to_i * 1000,
-        action: 'upload'
-      )
-    end
-
-    it 'should download the file content' do
-      stub_request(:get, 'https://f900.backblaze.com/file/test_bucket/test.txt').to_return(
-        body: 'hello world',
-        status: 200
-      )
-
-      content = file.download(bucket: bucket)
-      expect(content).to eq('hello world')
-    end
-  end
-
-  describe '#method_missing' do
+  describe '#method_missing / #respond_to_missing?' do
     let(:file) do
       Backblaze::B2::File.new(
         file_name: 'test.txt',
@@ -253,6 +296,12 @@ describe Backblaze::B2::File do
     it 'should delegate to latest version' do
       expect(file.file_id).to eq('file_id_1')
       expect(file.size).to eq(42)
+    end
+
+    it 'should report respond_to? correctly for delegated methods' do
+      expect(file.respond_to?(:file_id)).to be true
+      expect(file.respond_to?(:size)).to be true
+      expect(file.respond_to?(:nonexistent_method)).to be false
     end
 
     it 'should raise NoMethodError for unknown methods' do

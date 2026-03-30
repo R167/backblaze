@@ -21,6 +21,16 @@ describe Backblaze::B2::Bucket do
     end
   end
 
+  describe '#name / #id aliases' do
+    it 'should alias name to bucket_name' do
+      expect(bucket.name).to eq('generic_bucket')
+    end
+
+    it 'should alias id to bucket_id' do
+      expect(bucket.id).to eq('fhdjsfhdkja')
+    end
+  end
+
   describe '#public? / #private?' do
     it 'should be public when allPublic' do
       expect(bucket.public?).to be true
@@ -65,14 +75,14 @@ describe Backblaze::B2::Bucket do
 
         bucket = Backblaze::B2::Bucket.create(name: 'some_bucket', type: :public)
 
-        success.each do |key, value|
-          expect(bucket.send(Backblaze::Utils.underscore(key))).to eq value
-        end
+        expect(bucket.name).to eq('some_bucket')
+        expect(bucket.id).to eq('4a48fe8875c6214145260818')
+        expect(bucket.public?).to be true
       end
     end
 
     context 'failure' do
-      it 'should raise BucketError' do
+      it 'should raise BucketError with message' do
         stub_request(:post, /.*\/b2_create_bucket.*/).to_return(
           headers: {'Content-Type' => 'application/json'},
           body: '{"status":400,"code":"duplicate_bucket_name","message":"Bucket name is already in use"}',
@@ -81,7 +91,7 @@ describe Backblaze::B2::Bucket do
 
         expect {
           Backblaze::B2::Bucket.create(name: 'existing_bucket', type: :public)
-        }.to raise_error(Backblaze::BucketError)
+        }.to raise_error(Backblaze::BucketError, /duplicate_bucket_name/)
       end
     end
   end
@@ -101,13 +111,13 @@ describe Backblaze::B2::Bucket do
 
       buckets = Backblaze::B2::Bucket.buckets
       expect(buckets.size).to eq(2)
-      expect(buckets.first.bucket_name).to eq('bucket1')
+      expect(buckets.first.name).to eq('bucket1')
       expect(buckets.last.private?).to be true
     end
   end
 
   describe '.find' do
-    it 'should find a bucket by name' do
+    before do
       stub_request(:post, /.*b2_list_buckets.*/).to_return(
         body: {
           'buckets' => [
@@ -118,19 +128,15 @@ describe Backblaze::B2::Bucket do
         headers: {'Content-Type' => 'application/json'},
         status: 200
       )
+    end
 
+    it 'should find a bucket by name' do
       found = Backblaze::B2::Bucket.find(name: 'target')
       expect(found).to_not be_nil
-      expect(found.bucket_name).to eq('target')
+      expect(found.name).to eq('target')
     end
 
     it 'should return nil when not found' do
-      stub_request(:post, /.*b2_list_buckets.*/).to_return(
-        body: {'buckets' => []}.to_json,
-        headers: {'Content-Type' => 'application/json'},
-        status: 200
-      )
-
       expect(Backblaze::B2::Bucket.find(name: 'missing')).to be_nil
     end
   end
@@ -144,6 +150,7 @@ describe Backblaze::B2::Bucket do
       )
 
       bucket.destroy!
+      expect(bucket.destroyed?).to be true
       expect(bucket.exists?).to be false
     end
 
@@ -190,7 +197,7 @@ describe Backblaze::B2::Bucket do
     end
   end
 
-  describe '#file_names' do
+  describe '#files' do
     context 'success' do
       before do
         next_item = nil
@@ -203,25 +210,46 @@ describe Backblaze::B2::Bucket do
         stub_request(:post, /.*\/b2_list_file_names.*/).to_return(*list)
       end
 
-      it 'should process all on large limit' do
-        files = bucket.file_names(limit: 1000, convert: false, double_check_server: true)
+      it 'should list all files with large limit' do
+        files = bucket.files(limit: 1000)
         expect(files.size).to eq 40
+        expect(files.first).to be_a(Backblaze::B2::File)
       end
 
-      it 'should process some on a small limit' do
-        files = bucket.file_names(limit: 20, convert: false, double_check_server: true)
-        expect(files.size).to eq 20
+      it 'should limit results' do
+        files = bucket.files(limit: 10)
+        expect(files.size).to eq 10
       end
 
       it 'should use caching' do
         expect(bucket).to receive(:post).once.and_call_original
 
-        files1 = bucket.file_names(limit: 10, convert: false, cache: true)
-        files2 = bucket.file_names(limit: 10, convert: false, cache: true)
+        files1 = bucket.files(limit: 10, cache: true)
+        files2 = bucket.files(limit: 10, cache: true)
 
         expect(files1.size).to eq 10
         expect(files2).to eq files1
       end
+
+      it 'should store bucket_name on returned files' do
+        files = bucket.files(limit: 1)
+        expect(files.first.bucket_name).to eq('generic_bucket')
+      end
+    end
+  end
+
+  describe '#file_names (deprecated compat)' do
+    before do
+      stub_request(:post, /.*\/b2_list_file_names.*/).to_return(
+        body: file_list(size: 5).to_json,
+        status: 200
+      )
+    end
+
+    it 'should still work for backwards compatibility' do
+      files = bucket.file_names(limit: 5)
+      expect(files.size).to eq 5
+      expect(files.first).to be_a(Backblaze::B2::File)
     end
   end
 
@@ -244,6 +272,7 @@ describe Backblaze::B2::Bucket do
       files = bucket.file_versions
       expect(files.size).to eq(2)
       expect(files.first).to be_a(Backblaze::B2::File)
+      expect(files.first.bucket_name).to eq('generic_bucket')
     end
   end
 end
