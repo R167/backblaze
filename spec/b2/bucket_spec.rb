@@ -183,6 +183,19 @@ describe Backblaze::B2::Bucket do
     end
   end
 
+  describe '#download_authorization' do
+    it 'should generate a download auth token' do
+      stub_request(:post, /.*b2_get_download_authorization.*/).to_return(
+        body: {'authorizationToken' => 'download_token_123'}.to_json,
+        headers: {'Content-Type' => 'application/json'},
+        status: 200
+      )
+
+      token = bucket.download_authorization(file_name_prefix: 'photos/')
+      expect(token).to eq('download_token_123')
+    end
+  end
+
   describe '#upload_url' do
     it 'should get an upload url' do
       stub_request(:post, /.*b2_get_upload_url.*/).to_return(
@@ -257,9 +270,9 @@ describe Backblaze::B2::Bucket do
     it 'should list file versions grouped by name' do
       version_data = {
         'files' => [
-          {'fileId' => 'v1', 'fileName' => 'a.txt', 'size' => 100, 'action' => 'upload', 'uploadTimestamp' => Time.now.to_i * 1000},
-          {'fileId' => 'v2', 'fileName' => 'a.txt', 'size' => 90, 'action' => 'upload', 'uploadTimestamp' => (Time.now.to_i - 60) * 1000},
-          {'fileId' => 'v3', 'fileName' => 'b.txt', 'size' => 200, 'action' => 'upload', 'uploadTimestamp' => Time.now.to_i * 1000}
+          {'fileId' => 'v1', 'fileName' => 'a.txt', 'contentLength' => 100, 'action' => 'upload', 'uploadTimestamp' => Time.now.to_i * 1000},
+          {'fileId' => 'v2', 'fileName' => 'a.txt', 'contentLength' => 90, 'action' => 'upload', 'uploadTimestamp' => (Time.now.to_i - 60) * 1000},
+          {'fileId' => 'v3', 'fileName' => 'b.txt', 'contentLength' => 200, 'action' => 'upload', 'uploadTimestamp' => Time.now.to_i * 1000}
         ],
         'nextFileId' => nil
       }

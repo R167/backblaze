@@ -50,15 +50,17 @@ module Backblaze::B2
     # Lists all files in the bucket.
     # @param [Integer] limit max number of files to retrieve. Set to `-1` to get all files.
     # @param [Boolean] cache if there is no cache, create one. If there is a cache, use it.
+    # @param [String, nil] prefix only return files whose names start with this prefix
+    # @param [String, nil] delimiter used to group files into virtual folders (typically "/")
     # @return [Array<Backblaze::B2::File>]
-    def files(limit: 100, cache: false)
+    def files(limit: 100, cache: false, prefix: nil, delimiter: nil)
       if cache && !@file_name_cache.nil?
         if limit <= @file_name_cache[:limit]
           return @file_name_cache[:files]
         end
       end
 
-      raw_files = file_list(bucket_id: bucket_id, limit: limit, retrieved: 0, first_file: nil, start_field: 'startFileName')
+      raw_files = file_list(bucket_id: bucket_id, limit: limit, retrieved: 0, first_file: nil, start_field: 'startFileName', prefix: prefix, delimiter: delimiter)
 
       files = raw_files.map do |f|
         Backblaze::B2::File.new(**f.merge(bucket_id: bucket_id, bucket_name: bucket_name))
@@ -138,6 +140,20 @@ module Backblaze::B2
 
     def upload_url
       self.class.upload_url(bucket_id: bucket_id)
+    end
+
+    # Generate a download authorization token for files in this bucket.
+    # @param [String] file_name_prefix only authorize downloads of files starting with this prefix
+    # @param [Integer] valid_duration_in_seconds how long the token is valid (1 to 604800)
+    # @return [String] the authorization token
+    def download_authorization(file_name_prefix: '', valid_duration_in_seconds: 86400)
+      response = post('/b2_get_download_authorization', body: {
+        bucketId: bucket_id,
+        fileNamePrefix: file_name_prefix,
+        validDurationInSeconds: valid_duration_in_seconds
+      }.to_json)
+      raise Backblaze::BucketError.new(response) unless response.code == 200
+      response['authorizationToken']
     end
 
     class << self

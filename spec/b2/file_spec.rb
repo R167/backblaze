@@ -100,6 +100,31 @@ describe Backblaze::B2::File do
     end
   end
 
+  describe '.copy' do
+    it 'should copy a file server-side' do
+      stub_request(:post, /.*b2_copy_file.*/).to_return(
+        body: {
+          'fileName' => 'copy_of_test.txt',
+          'bucketId' => 'bucket123',
+          'contentLength' => 100,
+          'fileId' => 'new_file_id',
+          'action' => 'copy',
+          'uploadTimestamp' => Time.now.to_i * 1000
+        }.to_json,
+        headers: {'Content-Type' => 'application/json'},
+        status: 200
+      )
+
+      file = Backblaze::B2::File.copy(
+        source_file_id: 'original_file_id',
+        file_name: 'copy_of_test.txt'
+      )
+
+      expect(file).to be_a(Backblaze::B2::File)
+      expect(file.name).to eq('copy_of_test.txt')
+    end
+  end
+
   describe '#download_url' do
     it 'should build url using stored bucket_name' do
       file = Backblaze::B2::File.new(
@@ -197,8 +222,8 @@ describe Backblaze::B2::File do
     it 'should fetch all versions lazily' do
       version_data = {
         'files' => [
-          {'fileId' => 'v1', 'fileName' => 'test.txt', 'size' => 100, 'action' => 'upload', 'uploadTimestamp' => Time.now.to_i * 1000},
-          {'fileId' => 'v2', 'fileName' => 'test.txt', 'size' => 90, 'action' => 'upload', 'uploadTimestamp' => (Time.now.to_i - 60) * 1000}
+          {'fileId' => 'v1', 'fileName' => 'test.txt', 'contentLength' => 100, 'action' => 'upload', 'uploadTimestamp' => Time.now.to_i * 1000},
+          {'fileId' => 'v2', 'fileName' => 'test.txt', 'contentLength' => 90, 'action' => 'upload', 'uploadTimestamp' => (Time.now.to_i - 60) * 1000}
         ],
         'nextFileId' => nil
       }
@@ -229,7 +254,7 @@ describe Backblaze::B2::File do
     it 'should delete all versions' do
       version_data = {
         'files' => [
-          {'fileId' => 'v1', 'fileName' => 'test.txt', 'size' => 100, 'action' => 'upload', 'uploadTimestamp' => Time.now.to_i * 1000}
+          {'fileId' => 'v1', 'fileName' => 'test.txt', 'contentLength' => 100, 'action' => 'upload', 'uploadTimestamp' => Time.now.to_i * 1000}
         ],
         'nextFileId' => nil
       }
@@ -268,7 +293,7 @@ describe Backblaze::B2::File do
           'fileId' => 'hide_marker_1',
           'fileName' => 'test.txt',
           'action' => 'hide',
-          'size' => 0,
+          'contentLength' => 0,
           'uploadTimestamp' => Time.now.to_i * 1000
         }.to_json,
         headers: {'Content-Type' => 'application/json'},

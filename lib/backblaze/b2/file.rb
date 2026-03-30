@@ -47,6 +47,35 @@ module Backblaze::B2
         File.new(**params)
       end
 
+      # Server-side copy of a file.
+      # @param [String] source_file_id the file ID to copy from
+      # @param [String] file_name the destination file name
+      # @param [String, nil] destination_bucket_id target bucket (same bucket if nil)
+      # @param [String] content_type content type for the new file
+      # @return [Backblaze::B2::File]
+      def copy(source_file_id:, file_name:, destination_bucket_id: nil, content_type: 'b2/x-auto')
+        body = {
+          sourceFileId: source_file_id,
+          fileName: file_name,
+          contentType: content_type
+        }
+        body[:destinationBucketId] = destination_bucket_id if destination_bucket_id
+
+        response = post('/b2_copy_file', body: body.to_json)
+        raise Backblaze::FileError.new(response) unless response.code == 200
+
+        params = {
+          file_name: response['fileName'],
+          bucket_id: response['bucketId'],
+          size: response['contentLength'],
+          file_id: response['fileId'],
+          upload_timestamp: response['uploadTimestamp'] || Time.now.to_i * 1000,
+          action: response['action'] || 'copy'
+        }
+
+        File.new(**params)
+      end
+
       private
 
       def resolve_bucket(bucket)
@@ -95,7 +124,7 @@ module Backblaze::B2
         req = Net::HTTP::Post.new(uri)
 
         req.add_field("Authorization", upload_url[:token])
-        req.add_field("X-Bz-File-Name", URI.encode_www_form_component(name).gsub('+', '%20'))
+        req.add_field("X-Bz-File-Name", b2_encode_file_name(name))
         req.add_field("Content-Type", content_type)
         req.add_field("Content-Length", data.size)
 
@@ -112,7 +141,7 @@ module Backblaze::B2
         req.add_field("X-Bz-Content-Sha1", digest)
 
         info.first(10).each do |key, value|
-          req.add_field("X-Bz-Info-#{URI.encode_www_form_component(key)}", value)
+          req.add_field("X-Bz-Info-#{b2_encode_file_name(key)}", value)
         end
 
         http = Net::HTTP.new(req.uri.host, req.uri.port)

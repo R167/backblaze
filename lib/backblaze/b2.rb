@@ -8,16 +8,18 @@ require 'digest/sha1'
 
 module Backblaze::B2
   class << self
-    attr_reader :account_id, :token, :api_url, :download_url, :api_path
+    attr_reader :account_id, :token, :api_url, :download_url, :api_path,
+                :recommended_part_size, :absolute_minimum_part_size, :allowed
 
     ##
-    # Authenticates with the server to get the authorization data. Raises an error if there is a problem
+    # Authenticates with the server to get the authorization data.
     #
     # @param [#to_s] account_id the account id
     # @param [#to_s] application_key the private app key
+    # @param [String] api_path the API version path (defaults to v2)
     # @raise [Backblaze::AuthError] when unable to authenticate
     # @return [void]
-    def login(account_id:, application_key:, api_path: '/b2api/v1/')
+    def login(account_id:, application_key:, api_path: '/b2api/v2/')
       options = {
         basic_auth: {username: account_id, password: application_key}
       }
@@ -26,10 +28,27 @@ module Backblaze::B2
       raise Backblaze::AuthError.new(response) unless response.code == 200
 
       @account_id = response['accountId']
-      @token = response['authorizationToken']
-      @api_url = response['apiUrl']
-      @download_url = response['downloadUrl']
+      @authorizationToken = response['authorizationToken']
       @api_path = api_path
+
+      # v2+ nests storage fields under apiInfo.storageApi
+      # v1 has them at the top level
+      if response['apiInfo'] && response['apiInfo']['storageApi']
+        storage = response['apiInfo']['storageApi']
+        @api_url = storage['apiUrl']
+        @download_url = storage['downloadUrl']
+        @recommended_part_size = storage['recommendedPartSize']
+        @absolute_minimum_part_size = storage['absoluteMinimumPartSize']
+        @allowed = storage['allowed']
+      else
+        @api_url = response['apiUrl']
+        @download_url = response['downloadUrl']
+        @recommended_part_size = response['recommendedPartSize']
+        @absolute_minimum_part_size = response['absoluteMinimumPartSize']
+        @allowed = response.fetch('allowed', nil)
+      end
+
+      @token = response['authorizationToken']
 
       Backblaze::B2::Base.base_uri "#{@api_url}#{api_path}"
       Backblaze::B2::Base.headers 'Authorization' => @token, 'Content-Type' => 'application/json'

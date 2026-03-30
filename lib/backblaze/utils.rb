@@ -16,6 +16,15 @@ module Backblaze::Utils
     Hash[response.map { |k, v| [underscore(k).to_sym, v] }]
   end
 
+  # Percent-encode a file name for B2 headers.
+  # Preserves '/' as literal (B2 uses it as path separator).
+  # Encodes spaces as %20, '+' as %2B, per B2 spec.
+  def b2_encode_file_name(name)
+    name.split('/').map { |segment|
+      URI.encode_www_form_component(segment).gsub('+', '%20')
+    }.join('/')
+  end
+
   def self.included(base)
     base.extend(ClassMethods)
   end

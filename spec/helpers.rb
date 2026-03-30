@@ -6,7 +6,7 @@ module Helpers
         'action' => 'upload',
         'fileId' => SecureRandom.uuid.tr('-', '_'),
         'fileName' => "random_file_#{rand(0..10000)}.txt",
-        'size' => rand(10..1000),
+        'contentLength' => rand(10..1000),
         'uploadTimestamp' => Time.now.to_i * 1000
       }
     end
@@ -24,7 +24,7 @@ module Helpers
         'action' => 'upload',
         'fileId' => SecureRandom.uuid.tr('-', '_'),
         'fileName' => "random_file_#{rand(0..10000)}.txt",
-        'size' => rand(10..1000),
+        'contentLength' => rand(10..1000),
         'uploadTimestamp' => Time.now.to_i * 1000
       }
     end
@@ -39,17 +39,23 @@ module Helpers
   def stub_login
     success = {
       'accountId' => 'test_account_id',
-      'apiUrl' => 'https://api900.backblaze.com',
       'authorizationToken' => 'test_auth_token',
-      'downloadUrl' => 'https://f900.backblaze.com'
+      'apiInfo' => {
+        'storageApi' => {
+          'apiUrl' => 'https://api900.backblaze.com',
+          'downloadUrl' => 'https://f900.backblaze.com',
+          'recommendedPartSize' => 100_000_000,
+          'absoluteMinimumPartSize' => 5_000_000
+        }
+      }
     }
-    stub_request(:get, 'https://api.backblazeb2.com/b2api/v1/b2_authorize_account').
+    stub_request(:get, 'https://api.backblazeb2.com/b2api/v2/b2_authorize_account').
       with(basic_auth: ['test', 'test']).
       to_return(
-      body: success.to_json,
-      headers: {'Content-Type' => 'application/json'},
-      status: 200
-    )
+        body: success.to_json,
+        headers: {'Content-Type' => 'application/json'},
+        status: 200
+      )
     Backblaze::B2.login(account_id: 'test', application_key: 'test')
   end
 end

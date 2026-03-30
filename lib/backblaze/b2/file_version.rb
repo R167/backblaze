@@ -2,9 +2,9 @@ module Backblaze::B2
   class FileVersion < Base
     attr_reader :file_id, :size, :action, :upload_timestamp, :file_name
 
-    def initialize(file_id:, size:, upload_timestamp:, action:, file_name:, **_)
+    def initialize(file_id:, size: nil, content_length: nil, upload_timestamp:, action:, file_name:, **_)
       @file_id = file_id
-      @size = size
+      @size = size || content_length
       @action = action
       @file_name = file_name
       @upload_timestamp = Time.at(upload_timestamp / 1000.0)
