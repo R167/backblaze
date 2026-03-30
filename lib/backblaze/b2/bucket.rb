@@ -71,12 +71,12 @@ module Backblaze::B2
         end
       end
 
-      retreive_count = (double_check_server ? 0 : -1)
-      files = file_list(bucket_id: bucket_id, limit: limit, retreived: retreive_count, first_file: nil, start_field: 'startFileName'.freeze)
+      retrieve_count = (double_check_server ? 0 : -1)
+      files = file_list(bucket_id: bucket_id, limit: limit, retrieved: retrieve_count, first_file: nil, start_field: 'startFileName'.freeze)
 
       merge_params = {bucket_id: bucket_id}
       files.map! do |f|
-        Backblaze::B2::File.new(f.merge(merge_params))
+        Backblaze::B2::File.new(**f.merge(merge_params))
       end if convert
       if cache
         @file_name_cache = {limit: limit, convert: convert, files: files}
@@ -90,7 +90,7 @@ module Backblaze::B2
           return @file_versions_cache[:files]
         end
       end
-      file_versions = super(limit: 100, convert: convert, double_check_server: double_check_server, bucket_id: bucket_id)
+      file_versions = super(limit: limit, convert: convert, double_check_server: double_check_server, bucket_id: bucket_id)
       files = file_versions.group_by {|version| convert ? version.file_name : version[:file_name]}
       if convert
         files = files.map do |name, versions|
@@ -103,6 +103,38 @@ module Backblaze::B2
         @file_versions_cache = {}
       end
       files
+    end
+
+    # Delete this bucket. The bucket must be empty.
+    # @raise [Backblaze::BucketError] if the bucket cannot be deleted
+    # @return [void]
+    def destroy!
+      response = post('/b2_delete_bucket', body: {
+        accountId: @account_id,
+        bucketId: bucket_id
+      }.to_json)
+      raise Backblaze::BucketError.new(response) unless response.code / 100 == 2
+      @destroyed = true
+    end
+
+    # @return [Boolean] whether this bucket still exists
+    def exists?
+      !@destroyed
+    end
+
+    # Update this bucket's type
+    # @param [Symbol] type :public or :private
+    # @raise [Backblaze::BucketError] if the bucket cannot be updated
+    # @return [self]
+    def update(type:)
+      response = post('/b2_update_bucket', body: {
+        accountId: @account_id,
+        bucketId: bucket_id,
+        bucketType: (type == :public ? 'allPublic' : 'allPrivate')
+      }.to_json)
+      raise Backblaze::BucketError.new(response) unless response.code / 100 == 2
+      @bucket_type = response['bucketType']
+      self
     end
 
     def upload_url
@@ -129,13 +161,21 @@ module Backblaze::B2
 
         params = Hash[response.map{|k,v| [Backblaze::Utils.underscore(k).to_sym, v]}]
 
-        new(params)
+        new(**params)
       end
 
       def upload_url(bucket_id:)
         response = post('/b2_get_upload_url', body: {bucketId: bucket_id}.to_json)
         raise Backblaze::BucketError.new(response) unless response.code / 100 == 2
         {url: response['uploadUrl'], token: response['authorizationToken']}
+      end
+
+      ##
+      # Find a bucket by name
+      # @param [String] name the bucket name to find
+      # @return [Backblaze::B2::Bucket, nil] the bucket or nil if not found
+      def find(name:)
+        buckets.find { |b| b.bucket_name == name }
       end
 
       ##
@@ -148,7 +188,7 @@ module Backblaze::B2
         response = post('/b2_list_buckets', body: body.to_json)
         response['buckets'].map do |bucket|
           params = Hash[bucket.map{|k,v| [Backblaze::Utils.underscore(k).to_sym, v]}]
-          new(params)
+          new(**params)
         end
       end
     end

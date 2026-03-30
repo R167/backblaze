@@ -8,11 +8,13 @@ describe Backblaze::B2 do
       end
 
       it 'should raise AuthError on failure' do
-        stub_request(:get, 'https://failed:login@api.backblazeb2.com/b2api/v1/b2_authorize_account').to_return(
-          body: "{\"code\":\"unauthorized\",\"message\":\"invalid_authorization_headers\",\"status\":401}",
-          headers: {'Content-Type' => 'application/json'},
-          status: 401
-        )
+        stub_request(:get, 'https://api.backblazeb2.com/b2api/v1/b2_authorize_account').
+          with(basic_auth: ['failed', 'login']).
+          to_return(
+            body: '{"code":"unauthorized","message":"invalid_authorization_headers","status":401}',
+            headers: {'Content-Type' => 'application/json'},
+            status: 401
+          )
         expect {Backblaze::B2.login(account_id: 'failed', application_key: 'login')}.to raise_error(Backblaze::AuthError)
       end
     end
@@ -28,12 +30,13 @@ describe Backblaze::B2 do
       end
 
       before do
-        stub_request(:get, 'https://real:login@api.backblazeb2.com/b2api/v1/b2_authorize_account').to_return(
-          body: success.to_json,
-          headers: {'Content-Type' => 'application/json'},
-          status: 200,
-
-        )
+        stub_request(:get, 'https://api.backblazeb2.com/b2api/v1/b2_authorize_account').
+          with(basic_auth: ['real', 'login']).
+          to_return(
+            body: success.to_json,
+            headers: {'Content-Type' => 'application/json'},
+            status: 200,
+          )
       end
 
       it 'should succeed' do
@@ -48,6 +51,38 @@ describe Backblaze::B2 do
         expect(Backblaze::B2.token).to eq(success[:authorizationToken])
         expect(Backblaze::B2.download_url).to eq(success[:downloadUrl])
       end
+    end
+  end
+
+  describe '.credentials_file' do
+    it 'should load from a JSON file' do
+      stub_request(:get, 'https://api.backblazeb2.com/b2api/v1/b2_authorize_account').
+        with(basic_auth: ['json_account', 'json_key']).
+        to_return(
+          body: {accountId: 'json_account', apiUrl: 'https://api.backblaze.com', authorizationToken: 'token', downloadUrl: 'https://f.backblaze.com'}.to_json,
+          headers: {'Content-Type' => 'application/json'},
+          status: 200
+        )
+
+      file = Tempfile.new(['creds', '.json'])
+      file.write('{"account_id":"json_account","application_key":"json_key"}')
+      file.close
+
+      result = Backblaze::B2.credentials_file(file.path)
+      expect(result).to be true
+
+      file.unlink
+    end
+
+    it 'should return false when missing params' do
+      file = Tempfile.new(['creds', '.json'])
+      file.write('{"account_id":"only_id"}')
+      file.close
+
+      result = Backblaze::B2.credentials_file(file.path, raise_errors: false)
+      expect(result).to be false
+
+      file.unlink
     end
   end
 end

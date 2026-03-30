@@ -20,7 +20,126 @@ Or install it yourself as:
 
 ## Usage
 
-TODO: Write usage instructions here
+### Authentication
+
+Authenticate with your Backblaze B2 account ID and application key:
+
+```ruby
+require 'backblaze'
+
+Backblaze::B2.login(account_id: 'your_account_id', application_key: 'your_application_key')
+```
+
+Or load credentials from a JSON or YAML file:
+
+```ruby
+# credentials.json: {"account_id": "...", "application_key": "..."}
+Backblaze::B2.credentials_file('credentials.json')
+```
+
+### Buckets
+
+```ruby
+# List all buckets
+buckets = Backblaze::B2::Bucket.buckets
+
+# Find a bucket by name
+bucket = Backblaze::B2::Bucket.find(name: 'my-bucket')
+
+# Create a new bucket
+bucket = Backblaze::B2::Bucket.create(name: 'my-new-bucket', type: :public)
+
+# Update bucket type
+bucket.update(type: :private)
+
+# Check bucket type
+bucket.public?   # => false
+bucket.private?  # => true
+
+# Delete an empty bucket
+bucket.destroy!
+```
+
+### Uploading Files
+
+```ruby
+# Upload a string
+file = Backblaze::B2::File.create(
+  data: 'Hello, World!',
+  bucket: bucket,
+  name: 'hello.txt',
+  content_type: 'text/plain'
+)
+
+# Upload a file from disk
+file = Backblaze::B2::File.create(
+  data: File.open('/path/to/photo.jpg'),
+  bucket: bucket
+)
+
+# Upload with a base path and custom metadata
+file = Backblaze::B2::File.create(
+  data: 'data',
+  bucket: bucket,
+  name: 'report.csv',
+  base_name: 'reports/2024',
+  info: { 'author' => 'backblaze-gem' }
+)
+```
+
+### Listing Files
+
+```ruby
+# List files by name
+files = bucket.file_names(limit: 100)
+
+# List all file versions
+files = bucket.file_versions(limit: -1)
+
+# Use caching to avoid repeated API calls
+files = bucket.file_names(cache: true)
+files = bucket.file_names(cache: true)  # uses cached result
+```
+
+### Downloading Files
+
+```ruby
+# Download by file name
+content = file.download(bucket: bucket)
+
+# Get download URLs
+url = file.download_url(bucket: bucket)
+url = file.file_id_download_url
+
+# Download a specific version
+content = file.versions.first.download
+```
+
+### File Versions
+
+```ruby
+# Get all versions of a file
+versions = file.versions
+
+# Get info about a specific version
+info = versions.first.get_info
+
+# Look up file info by ID
+info = Backblaze::B2::FileVersion.get_info(file_id: 'file_id_here')
+```
+
+### Deleting Files
+
+```ruby
+# Delete all versions of a file (threaded)
+file.destroy!(thread_count: 4)
+
+# Delete a specific version
+file.versions.last.destroy!
+
+# Hide a file (soft delete)
+file.hide
+```
 
 ## Development
 
@@ -30,7 +149,7 @@ To install this gem onto your local machine, run `bundle exec rake install`. To 
 
 ## Contributing
 
-Bug reports and pull requests are welcome on GitHub at https://github.com/[USERNAME]/backblaze. This project is intended to be a safe, welcoming space for collaboration, and contributors are expected to adhere to the [Contributor Covenant](contributor-covenant.org) code of conduct.
+Bug reports and pull requests are welcome on GitHub at https://github.com/R167/backblaze. This project is intended to be a safe, welcoming space for collaboration, and contributors are expected to adhere to the [Contributor Covenant](contributor-covenant.org) code of conduct.
 
 
 ## License

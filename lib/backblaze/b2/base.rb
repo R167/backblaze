@@ -27,12 +27,12 @@ module Backblaze::B2
     protected
 
     def file_versions(bucket_id:, convert:, limit:, double_check_server:, file_name: nil, &block)
-      retreive_count = (double_check_server ? 0 : -1)
-      files = file_list(bucket_id: bucket_id, limit: limit, retreived: retreive_count, file_name: file_name, first_file: nil, start_field: 'startFileId'.freeze)
+      retrieve_count = (double_check_server ? 0 : -1)
+      files = file_list(bucket_id: bucket_id, limit: limit, retrieved: retrieve_count, file_name: file_name, first_file: nil, start_field: 'startFileId'.freeze)
 
       files.map! do |f|
         if block.nil?
-          Backblaze::B2::FileVersion.new(f)
+          Backblaze::B2::FileVersion.new(**f)
         else
           block.call(f)
         end
@@ -40,7 +40,7 @@ module Backblaze::B2
       files.compact
     end
 
-    def file_list(limit:, retreived:, first_file:, start_field:, bucket_id:, file_name: nil, first: true)
+    def file_list(limit:, retrieved:, first_file:, start_field:, bucket_id:, file_name: nil, first: true)
       params = {'bucketId'.freeze => bucket_id}
       if limit == -1
         params['maxFileCount'.freeze] = 1000
@@ -59,8 +59,6 @@ module Backblaze::B2
         params[start_field] = first_file
       end
 
-      p params
-
       response = post("/b2_list_file_#{start_field == 'startFileName' ? 'names' : 'versions'}", body: params.to_json)
 
       raise Backblaze::FileError.new(response) unless response.code == 200
@@ -69,11 +67,9 @@ module Backblaze::B2
       halt = false
       files.map! do |f|
         if halt
-          p f
           nil
         else
           ret = Hash[f.map{|k,v| [Backblaze::Utils.underscore(k).to_sym, v]}]
-          p ret
           if file_name && file_name != ret[:file_name]
             halt = true
           end
@@ -81,9 +77,9 @@ module Backblaze::B2
         end
       end.compact!
 
-      retreived = retreived + files.size if retreived >= 0
+      retrieved = retrieved + files.size if retrieved >= 0
       if limit > 0
-        limit = limit - (retreived >= 0 ? files.size : 1000)
+        limit = limit - (retrieved >= 0 ? files.size : 1000)
         limit = 0 if limit < 0
       end
 
@@ -93,7 +89,7 @@ module Backblaze::B2
         files.concat file_list(
           first_file: next_item,
           limit: limit,
-          retreived: retreived,
+          retrieved: retrieved,
           start_field: start_field,
           bucket_id: bucket_id,
           first: false

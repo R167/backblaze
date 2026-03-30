@@ -8,7 +8,7 @@ module Backblaze::B2
         @versions = versions
       else
         @fetched_all = false
-        @versions = [FileVersion.new(file_version_args.merge(file_name: file_name))]
+        @versions = [FileVersion.new(**file_version_args.merge(file_name: file_name))]
       end
     end
 
@@ -92,7 +92,7 @@ module Backblaze::B2
           action: 'upload'
         }
 
-        File.new(params)
+        File.new(**params)
       end
     end
 
@@ -110,7 +110,7 @@ module Backblaze::B2
     end
 
     def download_url(bucket:)
-      "#{Backblaze::B2.download_url}/file/#{bucket.is_a?(Bucket) ? bucket.name : bucket}/#{file_name}"
+      "#{Backblaze::B2.download_url}/file/#{bucket.is_a?(Bucket) ? bucket.bucket_name : bucket}/#{file_name}"
     end
 
     def file_id_download_url
@@ -150,6 +150,29 @@ module Backblaze::B2
 
     def exists?
       !@destroyed
+    end
+
+    # Hide this file so it doesn't show up in b2_list_file_names
+    # @raise [Backblaze::FileError] if the file cannot be hidden
+    # @return [Backblaze::B2::FileVersion] the hide marker version
+    def hide(bucket_id: @bucket_id)
+      response = post('/b2_hide_file', body: {
+        bucketId: bucket_id,
+        fileName: file_name
+      }.to_json)
+      raise Backblaze::FileError.new(response) unless response.code == 200
+      params = Hash[response.map{|k,v| [Backblaze::Utils.underscore(k).to_sym, v]}]
+      FileVersion.new(**params)
+    end
+
+    # Download the file content by name
+    # @param [Bucket, String] bucket the bucket or bucket name
+    # @return [String] the file content
+    def download(bucket:)
+      url = download_url(bucket: bucket)
+      response = HTTParty.get(url, headers: {'Authorization' => Backblaze::B2.token})
+      raise Backblaze::FileError.new(response) unless response.code == 200
+      response.body
     end
 
     def method_missing(m, *args, &block)

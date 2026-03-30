@@ -33,5 +33,26 @@ module Backblaze::B2
     def exists?
       !@destroyed
     end
+
+    # Download the content of this specific file version
+    # @return [String] the file content
+    def download
+      url = download_url
+      response = HTTParty.get(url, headers: {'Authorization' => Backblaze::B2.token})
+      raise Backblaze::FileError.new(response) unless response.code == 200
+      response.body
+    end
+
+    class << self
+      # Get file info by file ID without needing an existing instance
+      # @param [String] file_id the file ID
+      # @raise [Backblaze::FileError] if the file info cannot be retrieved
+      # @return [Hash] the file info
+      def get_info(file_id:)
+        response = post('/b2_get_file_info', body: {fileId: file_id}.to_json)
+        raise Backblaze::FileError.new(response) unless response.code == 200
+        Hash[response.map{|k,v| [Backblaze::Utils.underscore(k).to_sym, v]}]
+      end
+    end
   end
 end
